@@ -445,7 +445,7 @@ one.addEventListener('click',()=>run([0]));all.addEventListener('click',()=>run(
 <script>
 (()=>{'use strict';
 const base=document.getElementById('rhTestBox')||document.querySelector('#more .panel')||document.querySelector('#more')||document.querySelector('#moreTab')||document.querySelector('#settings');
-const root=document.createElement('section');root.id='rhMultiImport';root.innerHTML=`<h3>Robinhood · об’єднання CSV (TEST) — Universal CC/Wheel 23.10 M</h3><p style="font-weight:700;color:#b5e2ff">Версія перевірки: UNIVERSAL-CC-WHEEL-2026-10-23-N · мульти-тикерний журнал CC/CSP і перевірка Wheel</p><p>Вибери одразу старий та новий звіти Account Activity. Дубльовані операції між звітами враховуються лише один раз. Аналіз відбувається на цьому пристрої; файли не надсилаються до Worker, GitHub чи Massive.</p><label for="rhmFiles">Звіти Robinhood CSV</label><input type="file" id="rhmFiles" accept=".csv,text/csv" multiple><div id="rhmStatus" role="status">Вибери один або кілька файлів.</div><div id="rhmResult"></div><button id="rhmExport" type="button" disabled>Зберегти підсумок JSON</button><button id="rhmClear" type="button">Очистити результати</button><p><small>Облік FIFO лише орієнтовний: порядок угод у межах дня, часткові закриття, assignment, expiration та операції з акціями потребують незалежної звірки. Тут не розраховується повний P/L рахунку.</small></p>`;
+const root=document.createElement('section');root.id='rhMultiImport';root.innerHTML=`<h3>Robinhood · об’єднання CSV (TEST) — Universal CC/Wheel 23.10 O</h3><p style="font-weight:700;color:#b5e2ff">Версія перевірки: UNIVERSAL-CC-WHEEL-2026-10-23-O · мульти-тикерний журнал CC/CSP і перевірка Wheel</p><p>Вибери одразу старий та новий звіти Account Activity. Дубльовані операції між звітами враховуються лише один раз. Аналіз відбувається на цьому пристрої; файли не надсилаються до Worker, GitHub чи Massive.</p><label for="rhmFiles">Звіти Robinhood CSV</label><input type="file" id="rhmFiles" accept=".csv,text/csv" multiple><div id="rhmStatus" role="status">Вибери один або кілька файлів.</div><div id="rhmResult"></div><button id="rhmExport" type="button" disabled>Зберегти підсумок JSON</button><button id="rhmClear" type="button">Очистити результати</button><p><small>Облік FIFO лише орієнтовний: порядок угод у межах дня, часткові закриття, assignment, expiration та операції з акціями потребують незалежної звірки. Тут не розраховується повний P/L рахунку.</small></p>`;
 // Put beside the existing Robinhood TEST block; preserve all earlier UI and scripts.
 const slot=document.querySelector('#importsAndOptions')||document.querySelector('#more .panel')||document.querySelector('#more');
 if(slot){slot.appendChild(root)}else{document.querySelector('main').appendChild(root)}
@@ -475,6 +475,17 @@ if(opening){stack.push({qty:r.qty,unit:r.amount/r.qty,date:r.date,line:r.line});
 let remaining=r.qty,cp=r.amount/r.qty;for(let lot of stack){if(remaining<=1e-9)break;if(lot.qty<=1e-9)continue;let n=Math.min(lot.qty,remaining);lot.qty-=n;remaining-=n;closed.push({contract:r.contract,side,qty:n,date:r.date,openDate:lot.date,pnl:n*(lot.unit+cp),ambiguous:uncertainDates.has(r.contract+'|'+r.date),openCash:n*lot.unit,closeCash:n*cp});if(lot.date===r.date)sameDay.add(k+'|'+r.date)}if(remaining>1e-9)warnings.push({date:r.date,contract:r.contract,reason:`BTC/STC: не знайдено відкриття ${remaining} контр. у звітах`});queues.set(k,stack)}
 let opens=[];for(let [k,stack] of queues)for(let lot of stack)if(lot.qty>1e-9)opens.push({contract:k.split('|')[0],side:k.split('|')[1],date:lot.date,qty:lot.qty,cash:lot.qty*lot.unit});for(const k of uncertainDates){const cut=k.lastIndexOf('|');warnings.push({date:k.slice(cut+1),contract:k.slice(0,cut),reason:'Відкриття і закриття того самого контракту в один день — немає часу виконання; FIFO і P/L попередні'})}
 if(sameDay.size)warnings.push({date:'—',contract:'Кілька угод за день',reason:'Зіставлення FIFO у межах однієї дати може бути неточним без часу виконання'});
+// Independent date/series quantities from raw deduplicated Robinhood rows.
+// They explain flagged matches but never amend FIFO or book P/L.
+const dailyTrades=new Map();
+for(const tx of merged){
+ if(!tx.contract||!['STO','BTC'].includes(tx.code)||!Number.isFinite(tx.qty)||!Number.isFinite(tx.amount))continue;
+ const key=tx.contract+'|'+tx.date;
+ let z=dailyTrades.get(key);
+ if(!z){z={contract:tx.contract,date:tx.date,stoQty:0,btcQty:0,stoCash:0,btcCash:0,stoRows:0,btcRows:0};dailyTrades.set(key,z)}
+ if(tx.code==='STO'){z.stoQty+=tx.qty;z.stoCash+=tx.amount;z.stoRows++}
+ else {z.btcQty+=tx.qty;z.btcCash+=tx.amount;z.btcRows++}
+}
 let net=closed.reduce((n,c)=>n+c.pnl,0);
 // Roll candidates: closing one short CALL and opening a short CALL for
 // the same ticker on the same day. This is a cash-flow pairing, not proof
@@ -486,7 +497,7 @@ for(const c of closed){if(c.side!=='short'||!c.contract.includes(' CALL '))conti
 for(const r of merged){if(r.code!=='STO'||!r.contract?.includes(' CALL ')||!Number.isFinite(r.amount))continue;const k=r.contract.split(' ')[0]+'|'+r.date,a=openByDay.get(k)||[];a.push({contract:r.contract,date:r.date,qty:r.qty,cash:r.amount});openByDay.set(k,a)}
 const rolls=[];
 for(const [key,closes] of closeByDay){const opening=openByDay.get(key)||[];const used=new Set();for(const c of closes){let j=opening.findIndex((o,i)=>!used.has(i)&&o.contract!==c.contract&&o.qty===c.qty);if(j<0)continue;used.add(j);const o=opening[j];rolls.push({date:c.date,from:c.contract,to:o.contract,qty:c.qty,closeCash:c.closeCash,newCredit:o.cash,netCash:c.closeCash+o.cash,ambiguous:c.ambiguous,provisional:true})}}
-return {sources:sources.map(x=>({name:x.name,rows:x.rows.length})),total,duplicate,rows:merged.length,options:optionCount,closed,opens,warnings,assign,other,net,rolls,last:merged.at(-1)?.date||'—'} }
+return {sources:sources.map(x=>({name:x.name,rows:x.rows.length})),total,duplicate,rows:merged.length,options:optionCount,closed,opens,warnings,assign,other,net,rolls,dailyTrades:[...dailyTrades.values()],last:merged.at(-1)?.date||'—'} }
 function universalJournal(r,ticker,kind){
  const now=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
  const pattern=new RegExp('^'+ticker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+' (\\d{4}-\\d{2}-\\d{2}) '+kind+' \\$');
@@ -531,31 +542,36 @@ function universalJournal(r,ticker,kind){
  return `<div class="rhm-grid">${statU('Закриття без конфлікту',clean.length)}${statU('Попередній P/L цих закриттів',format(total))}${statU('Неоднозначні закриття',ambiguous.length)}${statU('Їхній P/L окремо',format(unc))}${statU('Можливі відкриті',active.length)}${statU('Премії відкритих — не прибуток',format(premium))}</div>${countStats}${cspHtml}<details open><summary>Підсумок за страйком та експірацією (${grouped.length})</summary><p>Контракти рахуються за кількістю (qty), а лоти — за кількістю записів FIFO. Неоднозначні угоди не включаються до основного P/L. Наведені рядки — результат зіставлення CSV, не підтвердження брокера.</p>${groupedHtml}</details><details open><summary>Історія ${esc(ticker)} ${kind} — ${closes.length} закриттів</summary>${detail}</details><details open><summary>Можливі відкриті (${active.length})</summary>${activeHtml}</details><details><summary>Експірація минула — звірити (${historic.length})</summary>${histHtml}</details><div class="rhm-warn">${kind==='PUT'?'Для Wheel / CSP окремо потрібні рух акцій, забезпечення та assignment. ':'Для Covered Call окремо потрібні акції та assignment. '}Це попередня хронологія коротких опціонів за CSV до ${esc(r.last)}. Вона не визначає зв’язки Wheel та не підтверджує, що опціон не є частиною багатоногого ордера. Спреди не класифікуються та не включаються до аналізу стратегії.</div>`;
 }
 function ambiguityAuditN(r){
- // Auditing the existing FIFO result only: no repair of order or of P/L.
+ // All figures are from this import. Grouped reconciliation is NOT a P/L repair.
  const flagged=r.closed.filter(x=>x.ambiguous&&x.side==='short');
  const groups=new Map();
  for(const x of flagged){
-   const key=x.contract+'|'+x.date;
-   let g=groups.get(key);
-   if(!g){g={contract:x.contract,date:x.date,qty:0,fragments:0,provisionalPnl:0};groups.set(key,g)}
-   g.qty+=x.qty;g.fragments++;g.provisionalPnl+=x.pnl;
+  const key=x.contract+'|'+x.date;
+  let g=groups.get(key);
+  if(!g){g={key,contract:x.contract,date:x.date,qty:0,fragments:0,provisionalPnl:0};groups.set(key,g)}
+  g.qty+=x.qty;g.fragments++;g.provisionalPnl+=x.pnl;
  }
  const all=[...groups.values()].sort((a,b)=>b.qty-a.qty||a.date.localeCompare(b.date)||a.contract.localeCompare(b.contract));
+ const daily=new Map((r.dailyTrades||[]).map(x=>[x.contract+'|'+x.date,x]));
  const unmatched=r.warnings.filter(w=>/BTC\/STC:\s*не знайдено відкриття/.test(w.reason));
  const tickerCounts=new Map();
  for(const g of all){let t=g.contract.split(' ')[0],old=tickerCounts.get(t)||{ticker:t,qty:0,parts:0,groups:0};old.qty+=g.qty;old.parts+=g.fragments;old.groups++;tickerCounts.set(t,old)}
  const num=x=>Number.isInteger(x)?String(x):x.toFixed(2);
  const totalQty=all.reduce((n,g)=>n+g.qty,0), totalFragments=all.reduce((n,g)=>n+g.fragments,0);
- const table=all.map(g=>`<tr><td>${esc(g.date)}</td><td>${esc(g.contract)}</td><td>${num(g.qty)}</td><td>${g.fragments}</td><td>${format(g.provisionalPnl)}</td></tr>`).join('');
+ const table=all.map(g=>{
+  const d=daily.get(g.key), both=d&&d.stoQty>0&&d.btcQty>0;
+  const status=both?'STO і BTC того самого дня: порядок невідомий':'Недостатньо операцій у CSV для уточнення';
+  return `<div class="rhm-row"><strong>${esc(g.contract)} · ${esc(g.date)}</strong><div>Неоднозначно зіставлено ${num(g.qty)} контр. у ${g.fragments} частинах FIFO.</div><div>STO за дату: ${d?num(d.stoQty):'—'} контр., ${d?format(d.stoCash):'—'} (${d?d.stoRows:0} рядків)</div><div>BTC за дату: ${d?num(d.btcQty):'—'} контр., ${d?format(d.btcCash):'—'} (${d?d.btcRows:0} рядків)</div><div>Умовний FIFO P/L: ${format(g.provisionalPnl)} — <strong>НЕ додавати до підтвердженого P/L</strong></div><div>Статус: ${esc(status)}. Потрібен час виконання/ідентифікатор ордера для точного парування.</div></div>`;
+ }).join('');
  const tickerRows=[...tickerCounts.values()].sort((a,b)=>b.qty-a.qty).map(x=>`<tr><td>${esc(x.ticker)}</td><td>${num(x.qty)}</td><td>${x.parts}</td><td>${x.groups}</td></tr>`).join('');
- const missing=unmatched.map(w=>`<div class="rhm-row"><strong>${esc(w.contract||'Невідома серія')} · ${esc(w.date)}</strong>${esc(w.reason)} · історія неповна, не додавати до P/L</div>`).join('');
- return `<details id="rhmAmbiguityAuditN" open><summary>Аудит неоднозначних закриттів — N</summary>
- <p>Це деталізація <strong>наявного</strong> FIFO, а не новий розрахунок або підтвердження брокера. Група = точна опціонна серія + дата закриття. Один контракт може бути частиною однієї з кількох угод; кількість фрагментів FIFO не є кількістю ордерів.</p>
- <div class="rhm-grid">${statU('Неоднозначні контракти (qty)',num(totalQty))}${statU('Частини зіставлених закриттів FIFO',totalFragments)}${statU('Серія + дата',all.length)}${statU('Закриття без знайденого відкриття',unmatched.length)}</div>
+ const missing=unmatched.map(w=>`<div class="rhm-row"><strong>${esc(w.contract||'Невідома серія')} · ${esc(w.date)}</strong>${esc(w.reason)} · неповна історія, P/L не розраховувати</div>`).join('');
+ return `<details id="rhmAmbiguityAuditN" open><summary>Звірка неоднозначних серій — O (${all.length} груп)</summary>
+ <p>Дані STO/BTC нижче взято безпосередньо з об'єднаних CSV за <strong>точною серією та датою</strong>. Кількість контрактів, грошові потоки й фрагменти FIFO показані окремо. Це не реконструкція часу виконання або окремих ордерів.</p>
+ <div class="rhm-grid">${statU('Неоднозначні контракти (qty)',num(totalQty))}${statU('Частини FIFO',totalFragments)}${statU('Серія + дата',all.length)}${statU('Закриття без знайденого відкриття',unmatched.length)}</div>
  <details><summary>Розподіл за тикерами (${tickerCounts.size})</summary><div style="overflow-x:auto"><table class="rhm-audit-table"><thead><tr><th>Тикер</th><th>Контр.</th><th>Фрагм.</th><th>Груп</th></tr></thead><tbody>${tickerRows}</tbody></table></div></details>
- <details><summary>Проблемні серії та дати (${all.length})</summary><div style="overflow-x:auto"><table class="rhm-audit-table"><thead><tr><th>Дата</th><th>Серія</th><th>Контр.</th><th>Фрагм.</th><th>Умовний FIFO P/L (не додавати)</th></tr></thead><tbody>${table}</tbody></table></div></details>
- <details><summary>Історія неповна — відкриття не знайдено (${unmatched.length})</summary>${missing||'<p>Таких випадків у поточних CSV не знайдено.</p>'}</details>
- <div class="rhm-warn"><strong>Причина невизначеності</strong><p>Для однієї серії в одну дату зафіксовано відкриття та закриття; час виконання у файлах недоступний. Ці операції не можна переводити в підтверджений P/L автоматично. Assignment, expiration та операції з акціями звіряються окремо. Спреди не аналізуються.</p></div>
+ <details open><summary>Зіставлення STO та BTC за датами (${all.length})</summary>${table||'<p>Неоднозначностей не знайдено.</p>'}</details>
+ <details><summary>Історія неповна — відкриття не знайдено (${unmatched.length})</summary>${missing||'<p>Не знайдено.</p>'}</details>
+ <div class="rhm-warn"><strong>Обмеження звірки</strong><p>CSV не містить точного часу операцій, тому зіставлення STO/BTC у межах однієї дати не можна автоматично підтвердити. Жодна з цих груп не додана до основного P/L. Assignment, expiration та акції потребують окремої звірки. Спреди не аналізуються.</p></div>
  </details>`;
 }
 function portfolioDashboard(r){
