@@ -445,7 +445,7 @@ one.addEventListener('click',()=>run([0]));all.addEventListener('click',()=>run(
 <script>
 (()=>{'use strict';
 const base=document.getElementById('rhTestBox')||document.querySelector('#more .panel')||document.querySelector('#more')||document.querySelector('#moreTab')||document.querySelector('#settings');
-const root=document.createElement('section');root.id='rhMultiImport';root.innerHTML=`<h3>Robinhood · об’єднання CSV (TEST) — Universal CC/Wheel 23.10 O</h3><p style="font-weight:700;color:#b5e2ff">Версія перевірки: UNIVERSAL-CC-WHEEL-2026-10-23-O · мульти-тикерний журнал CC/CSP і перевірка Wheel</p><p>Вибери одразу старий та новий звіти Account Activity. Дубльовані операції між звітами враховуються лише один раз. Аналіз відбувається на цьому пристрої; файли не надсилаються до Worker, GitHub чи Massive.</p><label for="rhmFiles">Звіти Robinhood CSV</label><input type="file" id="rhmFiles" accept=".csv,text/csv" multiple><div id="rhmStatus" role="status">Вибери один або кілька файлів.</div><div id="rhmResult"></div><button id="rhmExport" type="button" disabled>Зберегти підсумок JSON</button><button id="rhmClear" type="button">Очистити результати</button><p><small>Облік FIFO лише орієнтовний: порядок угод у межах дня, часткові закриття, assignment, expiration та операції з акціями потребують незалежної звірки. Тут не розраховується повний P/L рахунку.</small></p>`;
+const root=document.createElement('section');root.id='rhMultiImport';root.innerHTML=`<h3>Robinhood · об’єднання CSV (TEST) — Universal CC/Wheel 23.10 P</h3><p style="font-weight:700;color:#b5e2ff">Версія перевірки: UNIVERSAL-CC-WHEEL-2026-10-23-P · мульти-тикерний журнал CC/CSP і перевірка Wheel</p><p>Вибери одразу старий та новий звіти Account Activity. Дубльовані операції між звітами враховуються лише один раз. Аналіз відбувається на цьому пристрої; файли не надсилаються до Worker, GitHub чи Massive.</p><label for="rhmFiles">Звіти Robinhood CSV</label><input type="file" id="rhmFiles" accept=".csv,text/csv" multiple><div id="rhmStatus" role="status">Вибери один або кілька файлів.</div><div id="rhmResult"></div><button id="rhmExport" type="button" disabled>Зберегти підсумок JSON</button><button id="rhmClear" type="button">Очистити результати</button><p><small>Облік FIFO лише орієнтовний: порядок угод у межах дня, часткові закриття, assignment, expiration та операції з акціями потребують незалежної звірки. Тут не розраховується повний P/L рахунку.</small></p>`;
 // Put beside the existing Robinhood TEST block; preserve all earlier UI and scripts.
 const slot=document.querySelector('#importsAndOptions')||document.querySelector('#more .panel')||document.querySelector('#more');
 if(slot){slot.appendChild(root)}else{document.querySelector('main').appendChild(root)}
@@ -554,23 +554,46 @@ function ambiguityAuditN(r){
  const all=[...groups.values()].sort((a,b)=>b.qty-a.qty||a.date.localeCompare(b.date)||a.contract.localeCompare(b.contract));
  const daily=new Map((r.dailyTrades||[]).map(x=>[x.contract+'|'+x.date,x]));
  const unmatched=r.warnings.filter(w=>/BTC\/STC:\s*не знайдено відкриття/.test(w.reason));
+ // Date-end accounting based solely on observed STO/BTC rows; NOT brokerage holdings.
+ // A daily net can be deterministic while its within-day FIFO assignment is not.
+ const seriesHistory=new Map();
+ for(const day of r.dailyTrades||[]){
+  let a=seriesHistory.get(day.contract)||[];a.push(day);seriesHistory.set(day.contract,a);
+ }
+ for(const a of seriesHistory.values())a.sort((x,y)=>x.date.localeCompare(y.date));
+ function seriesPosition(contract,date){
+  let before=0,delta=0,after=0,negative=false,first=null;
+  for(const d of seriesHistory.get(contract)||[]){
+   if(d.date>date)break;
+   if(!first)first=d.date;
+   const change=d.stoQty-d.btcQty;
+   if(d.date<date)before+=change;else if(d.date===date)delta+=change;
+   if(before+delta<0)negative=true;
+  }
+  after=before+delta;
+  return {before,delta,after,negative,first};
+ }
+ const invalidGroupCount=all.filter(g=>seriesPosition(g.contract,g.date).negative).length;
  const tickerCounts=new Map();
  for(const g of all){let t=g.contract.split(' ')[0],old=tickerCounts.get(t)||{ticker:t,qty:0,parts:0,groups:0};old.qty+=g.qty;old.parts+=g.fragments;old.groups++;tickerCounts.set(t,old)}
  const num=x=>Number.isInteger(x)?String(x):x.toFixed(2);
  const totalQty=all.reduce((n,g)=>n+g.qty,0), totalFragments=all.reduce((n,g)=>n+g.fragments,0);
  const table=all.map(g=>{
   const d=daily.get(g.key), both=d&&d.stoQty>0&&d.btcQty>0;
+  const position=seriesPosition(g.contract,g.date);
   const status=both?'STO і BTC того самого дня: порядок невідомий':'Недостатньо операцій у CSV для уточнення';
-  return `<div class="rhm-row"><strong>${esc(g.contract)} · ${esc(g.date)}</strong><div>Неоднозначно зіставлено ${num(g.qty)} контр. у ${g.fragments} частинах FIFO.</div><div>STO за дату: ${d?num(d.stoQty):'—'} контр., ${d?format(d.stoCash):'—'} (${d?d.stoRows:0} рядків)</div><div>BTC за дату: ${d?num(d.btcQty):'—'} контр., ${d?format(d.btcCash):'—'} (${d?d.btcRows:0} рядків)</div><div>Умовний FIFO P/L: ${format(g.provisionalPnl)} — <strong>НЕ додавати до підтвердженого P/L</strong></div><div>Статус: ${esc(status)}. Потрібен час виконання/ідентифікатор ордера для точного парування.</div></div>`;
+  const insufficient=position.negative?' ⚠ Спостережуваний залишок став від’ємним — можлива відсутня попередня історія або інші події.':'';
+  return `<div class="rhm-row"><strong>${esc(g.contract)} · ${esc(g.date)}</strong><div>Неоднозначно зіставлено ${num(g.qty)} контр. у ${g.fragments} частинах FIFO.</div><div>STO за дату: ${d?num(d.stoQty):'—'} контр., ${d?format(d.stoCash):'—'} (${d?d.stoRows:0} рядків)</div><div>BTC за дату: ${d?num(d.btcQty):'—'} контр., ${d?format(d.btcCash):'—'} (${d?d.btcRows:0} рядків)</div><div><strong>Залишок за CSV до дати: ${num(position.before)} контр.; зміна за день: ${num(position.delta>=0?position.delta:position.delta)}; після дати: ${num(position.after)} контр.</strong> — лише сума STO − BTC, не підтверджена брокером позиція.${esc(insufficient)}</div><div>Умовний FIFO P/L: ${format(g.provisionalPnl)} — <strong>НЕ додавати до підтвердженого P/L</strong></div><div>Статус: ${esc(status)}. Потрібен час виконання/ідентифікатор ордера для точного парування.</div></div>`;
  }).join('');
  const tickerRows=[...tickerCounts.values()].sort((a,b)=>b.qty-a.qty).map(x=>`<tr><td>${esc(x.ticker)}</td><td>${num(x.qty)}</td><td>${x.parts}</td><td>${x.groups}</td></tr>`).join('');
  const missing=unmatched.map(w=>`<div class="rhm-row"><strong>${esc(w.contract||'Невідома серія')} · ${esc(w.date)}</strong>${esc(w.reason)} · неповна історія, P/L не розраховувати</div>`).join('');
- return `<details id="rhmAmbiguityAuditN" open><summary>Звірка неоднозначних серій — O (${all.length} груп)</summary>
+ return `<details id="rhmAmbiguityAuditN" open><summary>Звірка неоднозначних серій — P (${all.length} груп)</summary>
  <p>Дані STO/BTC нижче взято безпосередньо з об'єднаних CSV за <strong>точною серією та датою</strong>. Кількість контрактів, грошові потоки й фрагменти FIFO показані окремо. Це не реконструкція часу виконання або окремих ордерів.</p>
- <div class="rhm-grid">${statU('Неоднозначні контракти (qty)',num(totalQty))}${statU('Частини FIFO',totalFragments)}${statU('Серія + дата',all.length)}${statU('Закриття без знайденого відкриття',unmatched.length)}</div>
+ <div class="rhm-grid">${statU('Неоднозначні контракти (qty)',num(totalQty))}${statU('Частини FIFO',totalFragments)}${statU('Серія + дата',all.length)}${statU('Закриття без знайденого відкриття',unmatched.length)}${statU('Групи з від’ємним залишком CSV',invalidGroupCount)}</div>
  <details><summary>Розподіл за тикерами (${tickerCounts.size})</summary><div style="overflow-x:auto"><table class="rhm-audit-table"><thead><tr><th>Тикер</th><th>Контр.</th><th>Фрагм.</th><th>Груп</th></tr></thead><tbody>${tickerRows}</tbody></table></div></details>
  <details open><summary>Зіставлення STO та BTC за датами (${all.length})</summary>${table||'<p>Неоднозначностей не знайдено.</p>'}</details>
- <details><summary>Історія неповна — відкриття не знайдено (${unmatched.length})</summary>${missing||'<p>Не знайдено.</p>'}</details>
+ <details><summary>Історія неповна — відкриття не знайдено (${unmatched.length})</summary><p>Ці події не включені до розрахованих закриттів FIFO. Потрібні попередні STO або незалежне брокерське підтвердження.</p>${missing||'<p>Не знайдено.</p>'}</details>
+ <details><summary>Контроль правильності звірки</summary><p>Для кожної проблемної серії накопичуємо STO − BTC від найранішої дати у завантажених CSV. Перевіряємо тотожність: залишок до дати + (STO − BTC за дату) = залишок після дати. Від’ємний результат позначається як проблема неповного набору подій, а не автоматично виправляється. Дані assignment, expiration, коригування й виконання акцій у цих балансах не відображені. FIFO/P&L залишаються без змін.</p></details>
  <div class="rhm-warn"><strong>Обмеження звірки</strong><p>CSV не містить точного часу операцій, тому зіставлення STO/BTC у межах однієї дати не можна автоматично підтвердити. Жодна з цих груп не додана до основного P/L. Assignment, expiration та акції потребують окремої звірки. Спреди не аналізуються.</p></div>
  </details>`;
 }
