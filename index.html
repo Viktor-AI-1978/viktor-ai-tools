@@ -445,7 +445,7 @@ one.addEventListener('click',()=>run([0]));all.addEventListener('click',()=>run(
 <script>
 (()=>{'use strict';
 const base=document.getElementById('rhTestBox')||document.querySelector('#more .panel')||document.querySelector('#more')||document.querySelector('#moreTab')||document.querySelector('#settings');
-const root=document.createElement('section');root.id='rhMultiImport';root.innerHTML=`<h3>Robinhood · об’єднання CSV (TEST) — Universal CC/Wheel 23.10 S</h3><p style="font-weight:700;color:#b5e2ff">Версія перевірки: UNIVERSAL-CC-WHEEL-2026-10-23-S · мульти-тикерний журнал CC/CSP і перевірка Wheel</p><p>Вибери одразу старий та новий звіти Account Activity. Дубльовані операції між звітами враховуються лише один раз. Аналіз відбувається на цьому пристрої; файли не надсилаються до Worker, GitHub чи Massive.</p><label for="rhmFiles">Звіти Robinhood CSV</label><input type="file" id="rhmFiles" accept=".csv,text/csv" multiple><div id="rhmStatus" role="status">Вибери один або кілька файлів.</div><div id="rhmResult"></div><button id="rhmExport" type="button" disabled>Зберегти підсумок JSON</button><button id="rhmClear" type="button">Очистити результати</button><p><small>Облік FIFO лише орієнтовний: порядок угод у межах дня, часткові закриття, assignment, expiration та операції з акціями потребують незалежної звірки. Тут не розраховується повний P/L рахунку.</small></p>`;
+const root=document.createElement('section');root.id='rhMultiImport';root.innerHTML=`<h3>Robinhood · об’єднання CSV (TEST) — Universal CC/Wheel 23.10 T</h3><p style="font-weight:700;color:#b5e2ff">Версія перевірки: UNIVERSAL-CC-WHEEL-2026-10-23-T · мульти-тикерний журнал CC/CSP і перевірка Wheel</p><p>Вибери одразу старий та новий звіти Account Activity. Дубльовані операції між звітами враховуються лише один раз. Аналіз відбувається на цьому пристрої; файли не надсилаються до Worker, GitHub чи Massive.</p><label for="rhmFiles">Звіти Robinhood CSV</label><input type="file" id="rhmFiles" accept=".csv,text/csv" multiple><div id="rhmStatus" role="status">Вибери один або кілька файлів.</div><div class="rhm-row"><strong>Локальний архів імпорту — T</strong><p>За твоєю згодою зберігає вихідні CSV лише у сховищі браузера цього пристрою. Не надсилає файли в мережу. Safari може видалити локальні дані — зберігай також резервну копію.</p><label><input id="rhmKeep" type="checkbox" style="width:auto;min-height:0"> Автоматично зберігати CSV на цьому пристрої</label><div class="row"><button id="rhmRestore" type="button">Відновити локальні CSV</button><button id="rhmBackup" type="button">Завантажити резервну копію JSON</button><label>Імпортувати резервну копію<input id="rhmBackupInput" type="file" accept=".json,application/json"></label><button id="rhmDeleteSaved" type="button">Видалити локальний архів CSV</button></div><p id="rhmBackupStatus" role="status">Архів не перевірено.</p></div><div id="rhmResult"></div><button id="rhmExport" type="button" disabled>Зберегти підсумок JSON</button><button id="rhmClear" type="button">Очистити результати</button><p><small>Облік FIFO лише орієнтовний: порядок угод у межах дня, часткові закриття, assignment, expiration та операції з акціями потребують незалежної звірки. Тут не розраховується повний P/L рахунку.</small></p>`;
 // Put beside the existing Robinhood TEST block; preserve all earlier UI and scripts.
 const slot=document.querySelector('#importsAndOptions')||document.querySelector('#more .panel')||document.querySelector('#more');
 if(slot){slot.appendChild(root)}else{document.querySelector('main').appendChild(root)}
@@ -808,8 +808,49 @@ function draw(r){
  $('ujKind').addEventListener('change',updateUniversal);
  updateUniversal();
 }
-$('rhmFiles').addEventListener('change',async e=>{report=null;$('rhmExport').disabled=true;$('rhmResult').replaceChildren();let files=[...(e.target.files||[])];if(!files.length)return;$('rhmStatus').textContent='Обробляю обрані CSV…';try{report=await run(files);draw(report);$('rhmStatus').textContent=`Об'єднано ${files.length} звіт(ів), остання дата ${report.last}. Для наступного оновлення вибери всі потрібні файли знову.`;$('rhmExport').disabled=false}catch(err){$('rhmStatus').textContent='Помилка імпорту: '+err.message}});
-$('rhmClear').onclick=()=>{report=null;$('rhmFiles').value='';$('rhmResult').replaceChildren();$('rhmExport').disabled=true;$('rhmStatus').textContent='Результати очищено. Файли не зберігалися.'};
+
+// Private, consent-based, origin-scoped IndexedDB archive of CSV source texts.
+// No network calls. Archive is distinct from trade journal and worker tokens.
+const ARCHIVE_DB='viktor-rh-csv-private-v1',ARCHIVE_STORE='files',ARCHIVE_KEY='last';
+function archiveDB(){return new Promise((resolve,reject)=>{if(!('indexedDB' in window)){reject(Error('IndexedDB недоступний у цьому браузері'));return}const req=indexedDB.open(ARCHIVE_DB,1);req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains(ARCHIVE_STORE))req.result.createObjectStore(ARCHIVE_STORE)};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error||Error('Помилка сховища'))})}
+async function archiveAction(mode,payload){
+ const db=await archiveDB();
+ try{return await new Promise((resolve,reject)=>{const tx=db.transaction(ARCHIVE_STORE,mode==='get'?'readonly':'readwrite'),store=tx.objectStore(ARCHIVE_STORE);const req=mode==='get'?store.get(ARCHIVE_KEY):mode==='put'?store.put(payload,ARCHIVE_KEY):store.delete(ARCHIVE_KEY);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error||Error('Помилка запису'));tx.onabort=()=>reject(tx.error||Error('Запис скасовано'))})}
+ finally{db.close()}
+}
+const backupStatus=$('rhmBackupStatus');
+async function archiveSave(files){
+ const items=[];
+ for(const f of files){if(f.size>9e6)throw Error('Файл перевищує 9 MB');items.push({name:f.name,text:await f.text()})}
+ await archiveAction('put',{type:'viktor-robinhood-csv-backup',version:1,savedAt:new Date().toISOString(),items});
+ backupStatus.textContent=`CSV збережено локально (${items.length} файлів). Для захисту від втрати даних завантаж резервну копію.`;
+}
+function validateArchive(a){
+ if(!a||a.type!=='viktor-robinhood-csv-backup'||a.version!==1||!Array.isArray(a.items)||a.items.length<1||a.items.length>30)throw Error('Формат резервної копії не розпізнано');
+ const total=a.items.reduce((n,x)=>n+(typeof x.text==='string'?x.text.length:0),0);
+ if(total>27000000||a.items.some(x=>typeof x.text!=='string'||typeof x.name!=='string'||x.name.length>250||x.text.length>9000000))throw Error('Невірний формат або надмірний розмір CSV');
+ return a.items.map(x=>new File([x.text],x.name,{type:'text/csv'}));
+}
+async function applyArchived(a){
+ const files=validateArchive(a);
+ const next=await run(files);
+ report=next;draw(report);$('rhmExport').disabled=false;
+ $('rhmStatus').textContent=`Відновлено ${files.length} CSV з локального архіву; остання дата ${report.last}.`;
+ return files.length;
+}
+$('rhmKeep').addEventListener('change',async e=>{
+ try{if(e.target.checked){if(!report){backupStatus.textContent='Збереження ввімкнено. Вибери CSV або імпортуй резервну копію.';return}backupStatus.textContent='Збереження ввімкнено. Для архіву поточного імпорту вибери файли ще раз.'}
+ else backupStatus.textContent='Автозбереження вимкнено. Раніше збережений архів залишається, доки ти його не видалиш.'}
+ catch(err){backupStatus.textContent=err.message}
+});
+$('rhmRestore').onclick=async()=>{try{const a=await archiveAction('get');if(!a)throw Error('Немає локального архіву.');const n=await applyArchived(a);backupStatus.textContent=`Відновлено ${n} CSV з IndexedDB.`}catch(err){backupStatus.textContent='Не вдалося відновити: '+err.message}};
+$('rhmBackup').onclick=async()=>{try{const a=await archiveAction('get');if(!a)throw Error('Спочатку збережи CSV локально.');validateArchive(a);const u=URL.createObjectURL(new Blob([JSON.stringify(a)],{type:'application/json'}));const link=document.createElement('a');link.href=u;link.download='viktor-robinhood-csv-private-backup.json';link.click();setTimeout(()=>URL.revokeObjectURL(u),5000);backupStatus.textContent='Створено резервну копію. Файл містить фінансову історію; зберігай його приватно.'}catch(err){backupStatus.textContent=err.message}};
+$('rhmBackupInput').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{if(f.size>28000000)throw Error('Завеликий JSON');const data=JSON.parse(await f.text());const n=await applyArchived(data);if($('rhmKeep').checked)await archiveAction('put',data);backupStatus.textContent=`Імпортовано резервну копію (${n} CSV). ${$('rhmKeep').checked?'Також збережено локально.':'Автозбереження вимкнено.'}`}catch(err){backupStatus.textContent='Помилка резервної копії: '+err.message}finally{e.target.value=''}});
+$('rhmDeleteSaved').onclick=async()=>{if(!confirm('Видалити лише локальний архів CSV? Дані відкритої сторінки та журнал угод залишаться.'))return;try{await archiveAction('delete');$('rhmKeep').checked=false;backupStatus.textContent='Локальний архів CSV видалено.'}catch(err){backupStatus.textContent=err.message}};
+archiveAction('get').then(a=>{backupStatus.textContent=a?`Є локальний архів від ${a.savedAt||'невідомої дати'} (${a.items?.length||0} CSV). Натисни «Відновити локальні CSV».`:'Локального архіву CSV немає.'}).catch(()=>{backupStatus.textContent='Локальне сховище недоступне; можна імпортувати CSV вручну.'});
+
+$('rhmFiles').addEventListener('change',async e=>{report=null;$('rhmExport').disabled=true;$('rhmResult').replaceChildren();let files=[...(e.target.files||[])];if(!files.length)return;$('rhmStatus').textContent='Обробляю обрані CSV…';try{report=await run(files);draw(report);if($('rhmKeep').checked){try{await archiveSave(files)}catch(e){backupStatus.textContent='Не збережено: '+e.message}}$('rhmStatus').textContent=`Об'єднано ${files.length} звіт(ів), остання дата ${report.last}. Для наступного оновлення вибери всі потрібні файли знову.`;$('rhmExport').disabled=false}catch(err){$('rhmStatus').textContent='Помилка імпорту: '+err.message}});
+$('rhmClear').onclick=()=>{report=null;$('rhmFiles').value='';$('rhmResult').replaceChildren();$('rhmExport').disabled=true;$('rhmStatus').textContent='Результати з екрана очищено. Локальний архів, якщо є, залишається.'};
 $('rhmExport').onclick=()=>{if(!report)return;let data={version:'2.2 TEST',generated:new Date().toISOString(),note:'Preliminary FIFO cash-flow audit, not brokerage-confirmed realized P/L',...report};let blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='viktor-robinhood-merged-audit.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),3000)};
 })();
 </script></body></html>
