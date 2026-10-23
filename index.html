@@ -445,7 +445,7 @@ one.addEventListener('click',()=>run([0]));all.addEventListener('click',()=>run(
 <script>
 (()=>{'use strict';
 const base=document.getElementById('rhTestBox')||document.querySelector('#more .panel')||document.querySelector('#more')||document.querySelector('#moreTab')||document.querySelector('#settings');
-const root=document.createElement('section');root.id='rhMultiImport';root.innerHTML=`<h3>Robinhood · об’єднання CSV (TEST) — Universal CC/Wheel 23.10 P</h3><p style="font-weight:700;color:#b5e2ff">Версія перевірки: UNIVERSAL-CC-WHEEL-2026-10-23-P · мульти-тикерний журнал CC/CSP і перевірка Wheel</p><p>Вибери одразу старий та новий звіти Account Activity. Дубльовані операції між звітами враховуються лише один раз. Аналіз відбувається на цьому пристрої; файли не надсилаються до Worker, GitHub чи Massive.</p><label for="rhmFiles">Звіти Robinhood CSV</label><input type="file" id="rhmFiles" accept=".csv,text/csv" multiple><div id="rhmStatus" role="status">Вибери один або кілька файлів.</div><div id="rhmResult"></div><button id="rhmExport" type="button" disabled>Зберегти підсумок JSON</button><button id="rhmClear" type="button">Очистити результати</button><p><small>Облік FIFO лише орієнтовний: порядок угод у межах дня, часткові закриття, assignment, expiration та операції з акціями потребують незалежної звірки. Тут не розраховується повний P/L рахунку.</small></p>`;
+const root=document.createElement('section');root.id='rhMultiImport';root.innerHTML=`<h3>Robinhood · об’єднання CSV (TEST) — Universal CC/Wheel 23.10 R</h3><p style="font-weight:700;color:#b5e2ff">Версія перевірки: UNIVERSAL-CC-WHEEL-2026-10-23-R · мульти-тикерний журнал CC/CSP і перевірка Wheel</p><p>Вибери одразу старий та новий звіти Account Activity. Дубльовані операції між звітами враховуються лише один раз. Аналіз відбувається на цьому пристрої; файли не надсилаються до Worker, GitHub чи Massive.</p><label for="rhmFiles">Звіти Robinhood CSV</label><input type="file" id="rhmFiles" accept=".csv,text/csv" multiple><div id="rhmStatus" role="status">Вибери один або кілька файлів.</div><div id="rhmResult"></div><button id="rhmExport" type="button" disabled>Зберегти підсумок JSON</button><button id="rhmClear" type="button">Очистити результати</button><p><small>Облік FIFO лише орієнтовний: порядок угод у межах дня, часткові закриття, assignment, expiration та операції з акціями потребують незалежної звірки. Тут не розраховується повний P/L рахунку.</small></p>`;
 // Put beside the existing Robinhood TEST block; preserve all earlier UI and scripts.
 const slot=document.querySelector('#importsAndOptions')||document.querySelector('#more .panel')||document.querySelector('#more');
 if(slot){slot.appendChild(root)}else{document.querySelector('main').appendChild(root)}
@@ -527,6 +527,60 @@ function wheelEventAuditQ(r){
  <details><summary>Закриття опціонів без знайденого відкриття (${missing.length})</summary>${missing.map(w=>`<div class="rhm-row"><strong>${safe(w.date)} · ${safe(w.contract)}</strong><p>${safe(w.reason)}</p></div>`).join('')||'<p>Немає.</p>'}</details>
  <div class="rhm-warn">Статус: НЕ звірено. Фрагменти з неповною історією, можливими складними ордерами, corporate actions і відсутніми часами виконання не зараховуються до підтвердженого P/L. Дані для собівартості акцій та повного Wheel ще потребують окремої звірки.</div></details>`;
 }
+
+// Independent Wheel stock-flow reconciliation: no inferred brokerage cost basis.
+function wheelStockAuditR(r){
+ const raw=r.wheelRaw||[];
+ const events=raw.filter(x=>['OASGN','OEXP','OEXCS'].includes(x.code));
+ const shares=raw.filter(x=>['BUY','SELL'].includes(x.code));
+ const occ=raw.filter(x=>x.code==='OCC');
+ const cleanTicker=x=>String(x.ticker||'').trim().toUpperCase();
+ const tickers=[...new Set([...events,...shares,...occ].map(cleanTicker).filter(Boolean))].sort();
+ const nice=x=>esc(String(x??'—'));
+ const amt=x=>Number.isFinite(x)?format(x):'невизначено';
+ const dayDelta=(a,b)=>{const d=Date.parse(a+'T12:00:00Z'),e=Date.parse(b+'T12:00:00Z');return Number.isFinite(d)&&Number.isFinite(e)?Math.abs(d-e)/86400000:Infinity};
+ const candidateLinks=[];
+ for(const e of events){
+   if(e.code==='OEXP')continue;
+   const t=cleanTicker(e);
+   if(!t)continue;
+   const candidates=shares.filter(x=>cleanTicker(x)===t&&dayDelta(x.date,e.date)<=2);
+   const expected=Number.isFinite(e.qty)&&e.qty>0?e.qty*100:NaN;
+   const exact=candidates.filter(x=>Number.isFinite(expected)&&Number.isFinite(x.qty)&&Math.abs(x.qty-expected)<1e-6);
+   candidateLinks.push({event:e,candidates,exact});
+ }
+ const oneExact=candidateLinks.filter(x=>x.exact.length===1).length;
+ const noExact=candidateLinks.filter(x=>x.exact.length===0).length;
+ const manyExact=candidateLinks.filter(x=>x.exact.length>1).length;
+ const stockCash=shares.filter(x=>Number.isFinite(x.amount)).reduce((v,x)=>v+x.amount,0);
+ const buyQty=shares.filter(x=>x.code==='BUY'&&Number.isFinite(x.qty)).reduce((v,x)=>v+x.qty,0);
+ const sellQty=shares.filter(x=>x.code==='SELL'&&Number.isFinite(x.qty)).reduce((v,x)=>v+x.qty,0);
+ const detailEvent=e=>{
+   const ex=candidateLinks.find(x=>x.event===e);
+   const possible=ex?.candidates||[],exact=ex?.exact||[];
+   const status=e.code==='OEXP'?'Експірація: зіставлення з акціями не припускається':!Number.isFinite(e.qty)||e.qty<=0?'Кількість події невідома — потрібна звірка':exact.length===1?'Один кількісний кандидат — НЕ підтверджений зв’язок':exact.length>1?'Кілька кількісних кандидатів — неоднозначно':'Немає кількісного збігу — НЕ означає відсутність settlement';
+   return `<div class="rhm-row"><strong>${nice(e.date)} · ${nice(e.code)} · ${nice(e.contract||e.description)}</strong><p>Кількість події ${Number.isFinite(e.qty)?e.qty:'невідома'} · cash ${amt(e.amount)} · ${nice(status)}</p>${e.code==='OEXP'?'':`<small>Рухи акцій поруч (±2 календарні дні): ${possible.length}; із кількістю ${Number.isFinite(e.qty)?e.qty*100+' акцій':'не визначено'}: ${exact.length}. Це лише кандидати, без автоматичного призначення.</small>`}</div>`;
+ };
+ const tickerCards=tickers.map(t=>{
+   const e=events.filter(x=>cleanTicker(x)===t);
+   const sh=shares.filter(x=>cleanTicker(x)===t);
+   const cx=occ.filter(x=>cleanTicker(x)===t);
+   const cash=sh.filter(x=>Number.isFinite(x.amount)).reduce((v,x)=>v+x.amount,0);
+   const rows=sh.sort((a,b)=>a.date.localeCompare(b.date)).map(x=>{
+      const qty=Number.isFinite(x.qty)&&x.qty>0?x.qty:null;
+      const unit=qty!==null&&Number.isFinite(x.amount)?Math.abs(x.amount)/qty:null;
+      return `<div class="rhm-row"><strong>${nice(x.date)} · ${nice(x.code)} ${qty===null?'?':qty} акцій</strong><p>Cash ${amt(x.amount)} · сума на акцію ${unit===null?'невідома':amt(unit)} (не собівартість портфеля)</p><small>${nice(x.description)}</small></div>`;
+   }).join('');
+   return `<details><summary>${nice(t)} — подій ${e.length}, рухів акцій ${sh.length}, OCC ${cx.length}</summary><p>Сума грошових рухів акцій у наявному CSV: <b>${amt(cash)}</b>. Це НЕ P/L, не фінальна собівартість і не поточна вартість позиції.</p><details><summary>Опціонні події (${e.length})</summary>${e.map(detailEvent).join('')||'<p>Немає.</p>'}</details><details><summary>Операції з акціями (${sh.length})</summary>${rows||'<p>Немає.</p>'}</details><details><summary>OCC / settlement (${cx.length})</summary>${cx.map(x=>`<div class="rhm-row">${nice(x.date)} · ${nice(x.description)} · ${amt(x.amount)} — не включено до P/L</div>`).join('')||'<p>Немає.</p>'}</details></details>`;
+ }).join('');
+ return `<details open id="rhmWheelStockAuditR"><summary>Wheel: звірка акцій та собівартості — R</summary>
+ <p>Перевірка руху акцій і подій assignment/exercise з двох CSV до ${nice(r.last)}. Події зіставляються з рухами акцій того самого тикера в межах ±2 календарних днів <strong>лише як кандидати</strong>. Збіг кількості не доводить призначення. Строк settlement, дроблення, складні ордери та неповна історія можуть змінити висновок.</p>
+ <div class="rhm-grid">${statU('Рядків BUY / SELL',shares.length)}${statU('Куплено акцій (сума qty)',buyQty)}${statU('Продано акцій (сума qty)',sellQty)}${statU('Події OASGN / OEXCS / OEXP',events.length)}${statU('Події з 1 кількісним кандидатом',oneExact)}${statU('Без кількісного кандидата',noExact)}${statU('З кількома кандидатами',manyExact)}${statU('Net cash рухів акцій (НЕ P/L)',amt(stockCash))}</div>
+ <p><strong>Собівартість акцій:</strong> не визначена за цим аудитом. Для надійного FIFO cost basis потрібні підтверджені початкові залишки, assignment із напрямком і датою, корпоративні дії та звірені комісії. Умовне значення «сума на акцію» для кожної BUY / SELL — це лише cash рядка ÷ qty, а не собівартість утримуваних акцій. Автоматичного зв'язку PUT → акції → CALL немає.</p>
+ <details><summary>Деталізація за тикерами (${tickers.length})</summary>${tickerCards||'<p>Немає даних.</p>'}</details>
+ <div class="rhm-warn">Дані CSV — попередні, не підтвердження брокера. Не додавайте OCC і грошові рухи акцій до опціонного P/L без незалежної звірки: можливе подвійне врахування. Спреди не класифікуються й не аналізуються.</div></details>`;
+}
+
 function universalJournal(r,ticker,kind){
  const now=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
  const pattern=new RegExp('^'+ticker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+' (\\d{4}-\\d{2}-\\d{2}) '+kind+' \\$');
@@ -709,7 +763,7 @@ function draw(r){
  <p><small>Лише CSV до ${esc(r.last)}. Це не брокерськи підтверджений прибуток і не підсумок усієї стратегії з акціями. Спреди не аналізуються.</small></p></details>`;
 
  $('rhmResult').innerHTML=`<div class="rhm-grid">${stat('Файлів',r.sources.length)}${stat('Унікальних рядків',r.rows)}${stat('Дублікати',r.duplicate)}${stat('SMCI CALL: закриття',smci.length)}${stat('SMCI CALL: можливі активні',opened.length)}${stat('Минулі експірації — звірити',expired.length)}</div><div class="rhm-grid">${stat('Закриття без конфлікту послідовності (FIFO)',format(realized))}${stat('Неоднозначні закриття (НЕ додавати)',format(preliminary))}${stat('Премії можливих активних CALL (НЕ прибуток)',format(openPremium))}${stat('Можливі ролювання',smciRolls.length)}</div>${journal}<div class="rhm-warn"><strong>Як читати P/L</strong><p>Суми враховують cash за зіставленими STO/BTC, включно з комісіями, які відображені в CSV Amount. Це умовний FIFO cash P/L, а не підтверджений реалізований прибуток брокера. Премії відкритих CALL НЕ додаються до P/L, доки контракт не закритий. Для незвірених assignment, expiration, акцій і settlement результат не обчислюється. Неоднозначні угоди мають окрему суму та не включаються в перший показник.</p></div><details open><summary>SMCI CALL: фінансовий підсумок та можливі ролювання (${smciRolls.length})</summary><p>Ролювання визначено за закриттям та відкриттям різних SMCI CALL в один день. Це кандидат на ролювання, а не підтверджений комбінований ордер. Net cash ролювання = кредит нового STO плюс витрата на BTC; це НЕ реалізований P/L.</p>${smciRolls.map(x=>row(`${x.date}: ${x.from} → ${x.to}`,`${x.qty} контр. · BTC ${format(x.closeCash)} · STO ${format(x.newCredit)} · чистий рух ${format(x.netCash)} · потрібна звірка`)).join('')||'<p>Кандидатів не знайдено.</p>'}</details><div class="rhm-warn"><strong>SMCI CALL — попередня звірка</strong><p>Результати FIFO можуть бути неоднозначними, коли закриття і відкриття того самого контракту виконані в один день, адже CSV не містить часу. Ніякий P/L не вважається брокерськи підтвердженим. Перелік можливих активних контрактів побудований лише за CSV до ${esc(r.last)}: зміни після цієї дати можуть бути відсутні. Контракти з минулою експірацією винесені окремо для звірки. Спреди не аналізуються.</p></div><details open><summary>SMCI CALL: можливі активні за CSV (${opened.length})</summary>${opened.map(x=>row(x.contract,`${x.side} · ${x.qty} контр. · дата ${x.date} · cash ${format(x.cash)}`)).join('')||'<p>Не знайдено</p>'}</details><details><summary>SMCI CALL: історичні лоти після експірації (${expired.length})</summary><p>Ці лоти не є діючими контрактами на ${esc(asOf)}. CSV не підтверджує остаточне закриття чи фінансовий результат.</p>${expired.map(x=>row(x.contract,`${x.side} · ${x.qty} контр. · первинний cash ${format(x.cash)} · потрібна звірка виконання або експірації`)).join('')||'<p>Немає</p>'}</details><details><summary>SMCI CALL: попередні закриття (${smci.length})</summary>${smci.map(x=>row(x.contract,`${x.qty} контр. · ${x.openDate} → ${x.date} · орієнтовний cash P/L ${format(x.pnl)}${x.ambiguous?' · НЕОДНОЗНАЧНО — поза підсумком':''}`)).join('')||'<p>Не знайдено</p>'}</details><details><summary>SMCI: потребує перевірки (${cautions.length})</summary>${cautions.map(w=>row(w.contract,`${w.date}: ${w.reason}`)).join('')||'<p>Не виявлено</p>'}</details><details><summary>Завантажені звіти</summary>${r.sources.map(x=>row(x.name,`${x.rows} рядків`)).join('')}</details><p>Остання дата операцій: ${esc(r.last)}. Цей модуль не змінює журнал або збережені позиції.</p>`;
- $('rhmResult').insertAdjacentHTML('afterbegin',portfolioDashboard(r)+wheelEventAuditQ(r)+ambiguityAuditN(r));
+ $('rhmResult').insertAdjacentHTML('afterbegin',portfolioDashboard(r)+wheelStockAuditR(r)+wheelEventAuditQ(r)+ambiguityAuditN(r));
  // Read-only multi-ticker view, derived from the same deduplicated report.
  // No spread- or stock-level inference; short CALL and PUT are provisional trade legs.
  const universe=[...new Set([...r.closed,...r.opens].filter(x=>x.side==='short'&&/ (CALL|PUT) /.test(x.contract)).map(x=>x.contract.split(' ')[0]))].sort();
