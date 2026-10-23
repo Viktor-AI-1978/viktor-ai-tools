@@ -427,7 +427,7 @@ one.addEventListener('click',()=>run([0]));all.addEventListener('click',()=>run(
 <script>
 (()=>{'use strict';
 const base=document.getElementById('rhTestBox')||document.querySelector('#more .panel')||document.querySelector('#more')||document.querySelector('#moreTab')||document.querySelector('#settings');
-const root=document.createElement('section');root.id='rhMultiImport';root.innerHTML=`<h3>Robinhood · об’єднання CSV (TEST) — Universal CC/Wheel 23.10 G</h3><p style="font-weight:700;color:#b5e2ff">Версія перевірки: UNIVERSAL-CC-WHEEL-2026-10-23-G · мульти-тикерний журнал CC/CSP і перевірка Wheel</p><p>Вибери одразу старий та новий звіти Account Activity. Дубльовані операції між звітами враховуються лише один раз. Аналіз відбувається на цьому пристрої; файли не надсилаються до Worker, GitHub чи Massive.</p><label for="rhmFiles">Звіти Robinhood CSV</label><input type="file" id="rhmFiles" accept=".csv,text/csv" multiple><div id="rhmStatus" role="status">Вибери один або кілька файлів.</div><div id="rhmResult"></div><button id="rhmExport" type="button" disabled>Зберегти підсумок JSON</button><button id="rhmClear" type="button">Очистити результати</button><p><small>Облік FIFO лише орієнтовний: порядок угод у межах дня, часткові закриття, assignment, expiration та операції з акціями потребують незалежної звірки. Тут не розраховується повний P/L рахунку.</small></p>`;
+const root=document.createElement('section');root.id='rhMultiImport';root.innerHTML=`<h3>Robinhood · об’єднання CSV (TEST) — Universal CC/Wheel 23.10 H</h3><p style="font-weight:700;color:#b5e2ff">Версія перевірки: UNIVERSAL-CC-WHEEL-2026-10-23-H · мульти-тикерний журнал CC/CSP і перевірка Wheel</p><p>Вибери одразу старий та новий звіти Account Activity. Дубльовані операції між звітами враховуються лише один раз. Аналіз відбувається на цьому пристрої; файли не надсилаються до Worker, GitHub чи Massive.</p><label for="rhmFiles">Звіти Robinhood CSV</label><input type="file" id="rhmFiles" accept=".csv,text/csv" multiple><div id="rhmStatus" role="status">Вибери один або кілька файлів.</div><div id="rhmResult"></div><button id="rhmExport" type="button" disabled>Зберегти підсумок JSON</button><button id="rhmClear" type="button">Очистити результати</button><p><small>Облік FIFO лише орієнтовний: порядок угод у межах дня, часткові закриття, assignment, expiration та операції з акціями потребують незалежної звірки. Тут не розраховується повний P/L рахунку.</small></p>`;
 // Put beside the existing Robinhood TEST block; preserve all earlier UI and scripts.
 const slot=document.querySelector('#importsAndOptions')||document.querySelector('#more .panel')||document.querySelector('#more');
 if(slot){slot.appendChild(root)}else{document.querySelector('main').appendChild(root)}
@@ -492,7 +492,7 @@ function universalJournal(r,ticker,kind){
  // CSP collateral is a face-value scenario, not actual broker buying power.
  // Group by full OCC-like description so expiries are never mixed.
  const putCollateral = kind==='PUT' ? grouped.map(g=>{
-   const m=/^[^ ]+ (\\d{4}-\\d{2}-\\d{2}) PUT \\$([\\d.]+)$/.exec(g.contract);
+   const m=/^[^ ]+ (\d{4}-\d{2}-\d{2}) PUT \$([\d.]+)$/.exec(g.contract);
    const strike=m?Number(m[2]):NaN;
    const valid=!!m&&Number.isFinite(strike)&&strike>=0&&Number.isFinite(g.openQty)&&g.openQty>=0;
    return {g,strike,valid,amount:valid?Math.round(g.openQty*strike*100*100)/100:0};
