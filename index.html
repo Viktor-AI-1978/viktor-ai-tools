@@ -24,7 +24,19 @@ table{font-size:15px}td,th{padding:12px}.sectionfoot{margin-top:14px}
 
 /* v1.3 details */
 .v13list{display:grid;gap:12px}.v13item{padding:14px;border:1px solid var(--line);border-radius:14px;background:#132c42}.v13item button{margin-top:9px}.v13metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.v13metrics div{background:#163349;padding:12px;border-radius:12px}.v13metrics strong{display:block;font-size:19px;margin-top:5px}.v13metric-label{font-size:14px;color:var(--muted)}.v13warn{border-left:3px solid #e7bd72;padding:10px 12px;background:#2a313f;margin:12px 0;border-radius:8px}.v13table{width:100%;min-width:0;font-size:15px}.v13table td{overflow-wrap:anywhere}.v13table td:first-child{width:48%}.v13detail{margin-top:10px;padding-top:10px;border-top:1px solid #34516b}.v13detail p{margin:8px 0}.v13-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.v13-fields label{font-size:15px}.v13-fields input{font-size:17px}@media(max-width:420px){.v13-fields{grid-template-columns:1fr}.v13metrics{grid-template-columns:1fr 1fr}}
- .market-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:16px 0}.market-card{padding:15px;border:1px solid #36576b;border-radius:14px;background:#153146}.market-card strong{font-size:24px}.market-card small{display:block;font-size:15px;color:#abc8d9}.market-card .price{font-size:26px;font-weight:800;margin:10px 0}.market-card .foot{color:#abc8d9;font-size:14px;line-height:1.4}#marketEndpoint,#marketTickers{font-size:17px;margin-bottom:12px} </style><style>
+ .market-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:16px 0}.market-card{padding:15px;border:1px solid #36576b;border-radius:14px;background:#153146}.market-card strong{font-size:24px}.market-card small{display:block;font-size:15px;color:#abc8d9}.market-card .price{font-size:26px;font-weight:800;margin:10px 0}.market-card .foot{color:#abc8d9;font-size:14px;line-height:1.4}#marketEndpoint,#marketTickers{font-size:17px;margin-bottom:12px} 
+/* Y: mobile layout refinement, scoped to new overview only. */
+#rhMultiImport #rhmOverviewX{padding:12px!important;max-width:100%;box-sizing:border-box}
+#rhMultiImport #rhmOverviewX .rhm-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#rhMultiImport #rhmOverviewX .rhm-stat{padding:10px 9px;min-width:0;display:flex;flex-direction:column;gap:7px}
+#rhMultiImport #rhmOverviewX .rhm-stat small{font-size:clamp(11px,2.9vw,13px);line-height:1.35;overflow-wrap:break-word}
+#rhMultiImport #rhmOverviewX .rhm-stat b{font-size:clamp(15px,4.1vw,22px);line-height:1.2;white-space:nowrap;overflow-wrap:normal;word-break:normal;letter-spacing:-.05em;font-variant-numeric:tabular-nums}
+#rhMultiImport #rhmOverviewX h3{font-size:clamp(19px,5vw,25px);line-height:1.25}
+#rhMultiImport #rhmOverviewX nav a{font-size:14px;line-height:1.35}
+#rhMultiImport #rhmAdvancedY{margin-top:18px;padding:10px;border:1px solid #476b7c;border-radius:12px}
+#rhMultiImport #rhmAdvancedY>summary{padding:8px 2px}
+@media(max-width:330px){#rhMultiImport #rhmOverviewX .rhm-grid{grid-template-columns:1fr}}
+</style><style>
 /* v1.4 responsive form and navigation improvements */
 #tradeForm .date-field{grid-column:1/-1;min-width:0;width:100%}
 #tradeForm .date-field input[type=date]{display:block;width:100%;max-width:100%;min-width:0;box-sizing:border-box;min-height:52px;font-size:18px;padding:11px 13px;overflow:hidden}
@@ -445,7 +457,7 @@ one.addEventListener('click',()=>run([0]));all.addEventListener('click',()=>run(
 <script>
 (()=>{'use strict';
 const base=document.getElementById('rhTestBox')||document.querySelector('#more .panel')||document.querySelector('#more')||document.querySelector('#moreTab')||document.querySelector('#settings');
-const root=document.createElement('section');root.id='rhMultiImport';root.innerHTML=`<h3>Robinhood · об’єднання CSV (TEST) — Universal CC/Wheel 23.10 X</h3><p style="font-weight:700;color:#b5e2ff">Версія перевірки: UNIVERSAL-CC-WHEEL-2026-10-23-X · мульти-тикерний журнал CC/CSP і перевірка Wheel</p><p>Вибери одразу старий та новий звіти Account Activity. Дубльовані операції між звітами враховуються лише один раз. Аналіз відбувається на цьому пристрої; файли не надсилаються до Worker, GitHub чи Massive.</p><label for="rhmFiles">Звіти Robinhood CSV</label><input type="file" id="rhmFiles" accept=".csv,text/csv" multiple><div id="rhmStatus" role="status">Вибери один або кілька файлів.</div><div class="rhm-row"><strong>Локальний архів імпорту — V</strong><p>За твоєю згодою зберігає вихідні CSV лише у сховищі браузера цього пристрою. Не надсилає файли в мережу. Safari може видалити локальні дані — зберігай також резервну копію.</p><label><input id="rhmKeep" type="checkbox" style="width:auto;min-height:0"> Автоматично зберігати CSV на цьому пристрої</label><div class="row"><button id="rhmRestore" type="button">Відновити локальні CSV</button><button id="rhmBackup" type="button">Завантажити резервну копію JSON</button><label>Імпортувати резервну копію<input id="rhmBackupInput" type="file" accept=".json,application/json"></label><button id="rhmDeleteSaved" type="button">Видалити локальний архів CSV</button></div><p id="rhmBackupStatus" role="status">Архів не перевірено.</p></div><details id="rhmLegacyHelp"><summary>Старі модулі Robinhood — довідка</summary><p>Старі імпортери й контрольні списки працюють окремо від об’єднаного журналу. Для поточних підсумків використовуй саме цей модуль V. Не потрібно повторювати імпорт у старих блоках.</p></details><nav aria-label="Швидка навігація Robinhood" style="display:flex;flex-wrap:wrap;gap:10px;margin:12px 0"><a href="#rhmSelfCheckU">Самоперевірка</a><a href="#rhmRegressionV">Контроль журналу</a><a href="#rhmPortfolioDashboard">Портфель</a><a href="#rhmWheelStockAuditR">Wheel та акції</a></nav><div id="rhmResult"></div><button id="rhmExport" type="button" disabled>Зберегти підсумок JSON</button><button id="rhmClear" type="button">Очистити результати</button><p><small>Облік FIFO лише орієнтовний: порядок угод у межах дня, часткові закриття, assignment, expiration та операції з акціями потребують незалежної звірки. Тут не розраховується повний P/L рахунку.</small></p>`;
+const root=document.createElement('section');root.id='rhMultiImport';root.innerHTML=`<h3>Robinhood · об’єднання CSV (TEST) — Universal CC/Wheel 23.10 Y</h3><p style="font-weight:700;color:#b5e2ff">Версія перевірки: UNIVERSAL-CC-WHEEL-2026-10-23-Y · мульти-тикерний журнал CC/CSP і перевірка Wheel</p><p>Вибери одразу старий та новий звіти Account Activity. Дубльовані операції між звітами враховуються лише один раз. Аналіз відбувається на цьому пристрої; файли не надсилаються до Worker, GitHub чи Massive.</p><label for="rhmFiles">Звіти Robinhood CSV</label><input type="file" id="rhmFiles" accept=".csv,text/csv" multiple><div id="rhmStatus" role="status">Вибери один або кілька файлів.</div><div class="rhm-row"><strong>Локальний архів імпорту — V</strong><p>За твоєю згодою зберігає вихідні CSV лише у сховищі браузера цього пристрою. Не надсилає файли в мережу. Safari може видалити локальні дані — зберігай також резервну копію.</p><label><input id="rhmKeep" type="checkbox" style="width:auto;min-height:0"> Автоматично зберігати CSV на цьому пристрої</label><div class="row"><button id="rhmRestore" type="button">Відновити локальні CSV</button><button id="rhmBackup" type="button">Завантажити резервну копію JSON</button><label>Імпортувати резервну копію<input id="rhmBackupInput" type="file" accept=".json,application/json"></label><button id="rhmDeleteSaved" type="button">Видалити локальний архів CSV</button></div><p id="rhmBackupStatus" role="status">Архів не перевірено.</p></div><details id="rhmLegacyHelp"><summary>Старі модулі Robinhood — довідка</summary><p>Старі імпортери й контрольні списки працюють окремо від об’єднаного журналу. Для поточних підсумків використовуй саме цей модуль V. Не потрібно повторювати імпорт у старих блоках.</p></details><nav aria-label="Швидка навігація Robinhood" style="display:flex;flex-wrap:wrap;gap:10px;margin:12px 0"><a href="#rhmSelfCheckU">Самоперевірка</a><a href="#rhmRegressionV">Контроль журналу</a><a href="#rhmPortfolioDashboard">Портфель</a><a href="#rhmWheelStockAuditR">Wheel та акції</a></nav><div id="rhmResult"></div><button id="rhmExport" type="button" disabled>Зберегти підсумок JSON</button><button id="rhmClear" type="button">Очистити результати</button><p><small>Облік FIFO лише орієнтовний: порядок угод у межах дня, часткові закриття, assignment, expiration та операції з акціями потребують незалежної звірки. Тут не розраховується повний P/L рахунку.</small></p>`;
 // Put beside the existing Robinhood TEST block; preserve all earlier UI and scripts.
 const slot=document.querySelector('#importsAndOptions')||document.querySelector('#more .panel')||document.querySelector('#more');
 if(slot){slot.appendChild(root)}else{document.querySelector('main').appendChild(root)}
@@ -771,7 +783,7 @@ function overviewX(r){
  for(const x of opens){const m=parsed(x.contract);if(!m||m[2]<asOf)continue;if(m[3]==='CALL')calls+=x.qty;else{puts+=x.qty;const strike=Number(m[4]);if(Number.isFinite(strike))nominal+=strike*x.qty*100;else unpriced+=x.qty}}
  const s=sum(short),l=sum(long),all=sum(closed);
  const status=Math.abs((s+l)-all)<.02;
- return `<section id="rhmOverviewX" class="rhm-row" style="margin:14px 0;border:2px solid #4c8ca1"><h3 style="margin:0 0 8px">Головний фінансовий огляд — X</h3>
+ return `<section id="rhmOverviewX" class="rhm-row" style="margin:14px 0;border:2px solid #4c8ca1"><h3 style="margin:0 0 8px">Головний фінансовий огляд — Y</h3>
  <p><strong>CSV до ${esc(r.last)}.</strong> Це попередні результати, а не підтверджений брокером P/L чи повний облік Wheel.</p>
  <div class="rhm-grid">${statU('CALL: можливі відкриті контракти',calls)}${statU('PUT: можливі відкриті контракти',puts)}${statU('Номінальне CSP (НЕ фактично заблоковані кошти)',format(nominal))}${statU('P/L коротких STO/BTC',format(s))}${statU('P/L довгих BTO/STC (окремо)',format(l))}${statU('Разом short + long (НЕ додавати ще раз)',format(all))}${statU('Неоднозначні контракти — без підтвердження',ambiguous)}${statU('Джерела / рядки / дублікати',`${r.sources.length} / ${r.rows} / ${r.duplicate}`)}</div>
  <p><strong>Контроль:</strong> ${status?'✓ Short + long = загальний результат':'⚠ Суми потребують звірки'}. ${unpriced?'Додатково '+unpriced+' PUT без визначеного номіналу.':''}</p>
@@ -877,6 +889,20 @@ function draw(r){
  $('rhmResult').prepend($('rhmPortfolioDashboard'));
  $('rhmResult').insertAdjacentHTML('afterbegin',overviewX(r));
  setupPortfolioDashboard();
+ // Keep the main overview, portfolio and active trading journal visible.
+ // Group prior diagnostics; preserve their elements, values and event handlers.
+ const resultRoot=$('rhmResult');
+ const advanced=document.createElement('details');advanced.id='rhmAdvancedY';
+ const summary=document.createElement('summary');summary.textContent='Додаткові технічні перевірки та історичні звіти';advanced.appendChild(summary);
+ [...resultRoot.children].filter(el=>!['rhmOverviewX','rhmPortfolioDashboard','universalJournal'].includes(el.id)).forEach(el=>advanced.appendChild(el));
+ resultRoot.appendChild(advanced);
+ // Opening an in-page diagnostics link also reveals its collapsed parent.
+ root.querySelectorAll('a[href^="#rhm"]').forEach(a=>a.addEventListener('click',()=>{
+  const target=document.getElementById(a.getAttribute('href').slice(1));
+  if(!target)return;
+  let parent=target.parentElement;
+  while(parent&&parent!==document.body){if(parent.tagName==='DETAILS')parent.open=true;parent=parent.parentElement}
+ }));
  const updateUniversal=()=>{$('ujBody').innerHTML=universalJournal(r,$('ujTicker').value,$('ujKind').value)};
  $('ujTicker').addEventListener('change',updateUniversal);
  $('ujKind').addEventListener('change',updateUniversal);
