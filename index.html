@@ -969,7 +969,7 @@ $('rhmDriveLoad').addEventListener('click',async()=>{
    const files=snap.files.map(x=>{const csv=x&&typeof x.content==='string'?x.content:x&&x.text;if(!x||typeof x.name!=='string'||typeof csv!=='string'||csv.length>9e6)throw Error('Неправильний CSV у знімку');return new File([csv],x.name,{type:'text/csv'})});
    const next=await run(files);report=next;draw(next);$('rhmExport').disabled=false;
    if($('rhmKeep').checked){try{await archiveSave(files)}catch(err){backupStatus.textContent='Локальний архів: '+err.message}}
-   st.textContent=`Отримано ${files.length} CSV з Drive (знімок ${snap.updatedAt||snap.syncedAt||'без дати'}). ${next.rows.length} унікальних рядків, ${next.duplicate} дублікатів.`;
+   st.textContent=`Отримано ${files.length} CSV з Drive (знімок ${snap.updatedAt||snap.syncedAt||'без дати'}). ${next.rows} унікальних рядків, ${next.duplicate} дублікатів.`;
  }catch(err){st.textContent='Синхронізація не виконана: '+err.message}finally{button.disabled=false}
 });
 
