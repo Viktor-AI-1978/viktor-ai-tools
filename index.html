@@ -72,6 +72,9 @@ table{font-size:15px}td,th{padding:12px}.sectionfoot{margin-top:14px}
       <div><label for="indTicker">Тикер</label><select id="indTicker"><option value="">Усі</option></select></div>
       <div><label for="indTf">Таймфрейм</label><select id="indTf"><option value="">1D і 1W</option><option value="1D">1D</option><option value="1W">1W</option></select></div>
     </div>
+    <h3 style="margin-top:20px">Панель сигналів · 1D / 1W</h3>
+    <p class="muted">Оцінки за останніми доступними записами; не є сигналами в реальному часі. Неперевірені дані позначаються окремо.</p>
+    <div id="indDashboard" class="market-grid"></div>
     <div id="indCards" class="market-grid" style="margin-top:16px"></div>
     <h3 style="margin-top:20px">Історія вимірювань</h3>
     <div id="indHistory" class="tablewrap"></div>
@@ -1015,12 +1018,39 @@ $('rhmExport').onclick=()=>{if(!report)return;let data={version:'2.2 TEST',gener
     row.push(cell);if(row.some(x=>x!==''))rows.push(row);return rows;
   }
   function numeric(s){const x=String(s??'').trim().replace(/\s/g,'').replace(',','.');return x===''?null:Number.isFinite(Number(x))?Number(x):null;}
+  const dayAge=(date)=>{const d=new Date(String(date).slice(0,10)+'T00:00:00Z');return Number.isFinite(d.getTime())?Math.floor((Date.now()-d.getTime())/86400000):null;};
+  const nfmt=(n)=>n===null?'—':Number(n).toFixed(2);
+  function verdict(r){
+    if(!r)return 'немає даних';
+    const bits=[];
+    if(r.close!==null&&r.ema!==null)bits.push(r.close>r.ema?'ціна вище EMA20':r.close<r.ema?'ціна нижче EMA20':'ціна на EMA20');
+    if(r.rsi!==null)bits.push(r.rsi>=70?'RSI ≥ 70':r.rsi<=30?'RSI ≤ 30':r.rsi>=50?'RSI ≥ 50':'RSI < 50');
+    if(r.macd!==null&&r.signal!==null)bits.push(r.macd>r.signal?'MACD вище Signal':r.macd<r.signal?'MACD нижче Signal':'MACD = Signal');
+    return bits.length?bits.join(' · '):'недостатньо числових показників';
+  }
+  function renderDashboard(){
+    const chosen=records.filter(r=>!ticker.value||r.ticker===ticker.value);
+    const latest=new Map();
+    for(const r of chosen){const k=r.ticker+'|'+r.tf;if(!latest.has(k)||r.date>latest.get(k).date||(r.date===latest.get(k).date&&r.collected>latest.get(k).collected))latest.set(k,r);}
+    const tickers=[...new Set(chosen.map(r=>r.ticker))].sort();
+    const out=document.getElementById('indDashboard');
+    out.innerHTML=tickers.length?tickers.map(t=>{
+      const daily=latest.get(t+'|1D'),weekly=latest.get(t+'|1W');
+      const visible=tf.value==='1D'?[['1D',daily]]:tf.value==='1W'?[['1W',weekly]]:[['1D',daily],['1W',weekly]];
+      const divergence=[daily,weekly].filter(Boolean).map(r=>r.divergence).filter(Boolean);
+      const stale=visible.some(([,r])=>r&&dayAge(r.date)!==null&&dayAge(r.date)>5);
+      const unknown=visible.some(([,r])=>r&&(!r.verified||!/^(verified|перевірено|confirmed|підтверджено)$/i.test(r.verified.trim())));
+      const conflict=daily&&weekly&&daily.close!==null&&daily.ema!==null&&weekly.close!==null&&weekly.ema!==null&&((daily.close>daily.ema)!==(weekly.close>weekly.ema));
+      return `<article class="market-card"><strong>${esc(t)} · зведення</strong><small>${stale?'⚠ Є записи старші 5 днів · ':''}${unknown?'⚠ Перевірка не підтверджена':''}</small>${visible.map(([label,r])=>r?`<div style="margin-top:12px;border-top:1px solid #36576b;padding-top:10px"><b>${label}</b> · ${esc(r.date)} · Close ${nfmt(r.close)}<br><span class="foot">${esc(verdict(r))}</span><br><span class="foot">RSI ${nfmt(r.rsi)} · MACD ${nfmt(r.macd)} / Signal ${nfmt(r.signal)} · EMA20 ${nfmt(r.ema)}</span><br><span class="foot">Тренд (таблиця): ${esc(r.trend||'—')} · Перевірка: ${esc(r.verified||'—')}</span></div>`:`<div class="foot" style="margin-top:12px">${label}: немає запису</div>`).join('')}<p class="foot">${conflict?'⚠ 1D та 1W по різні боки EMA20. ':''}Дивергенції (з таблиці): ${esc(divergence.join(' / ')||'не зазначені')}</p></article>`;
+    }).join(''):'<p class="muted">Немає даних для панелі.</p>';
+  }
   function render(){
     const filtered=records.filter(r=>(!ticker.value||r.ticker===ticker.value)&&(!tf.value||r.tf===tf.value));
     const latest=new Map();
     for(const r of filtered){const k=r.ticker+'|'+r.tf;if(!latest.has(k)||r.date>latest.get(k).date)latest.set(k,r);}
     const items=[...latest.values()].sort((a,b)=>a.ticker.localeCompare(b.ticker)||a.tf.localeCompare(b.tf));
     cards.innerHTML=items.length?items.map(r=>`<article class="market-card"><strong>${esc(r.ticker)} · ${esc(r.tf)}</strong><small>Сесія: ${esc(r.date)} · Збір: ${esc(r.collected)}</small><div class="price">${r.close===null?'—':esc(r.close)}</div><div>RSI14: <b>${r.rsi===null?'—':esc(r.rsi)}</b> · EMA20: <b>${r.ema===null?'—':esc(r.ema)}</b></div><div>MACD: ${r.macd===null?'—':esc(r.macd)} · Signal: ${r.signal===null?'—':esc(r.signal)}</div><p class="foot">Тренд: ${esc(r.trend||'—')}<br>Support: ${esc(r.support||'—')} · Resistance: ${esc(r.resistance||'—')}</p><p class="foot">Дивергенції: ${esc(r.divergence||'—')}</p><p class="foot">Перевірка: ${esc(r.verified||'не вказано')}</p></article>`).join(''):'<p class="muted">Немає даних для вибраного фільтра.</p>';
+    renderDashboard();
     const sorted=[...filtered].sort((a,b)=>b.date.localeCompare(a.date)||a.ticker.localeCompare(b.ticker)).slice(0,200);
     history.innerHTML=sorted.length?'<table><thead><tr><th>Дата</th><th>Тикер</th><th>TF</th><th>Close</th><th>RSI</th><th>MACD</th><th>EMA20</th><th>Статус перевірки</th></tr></thead><tbody>'+sorted.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.ticker)}</td><td>${esc(r.tf)}</td><td>${esc(r.close??'—')}</td><td>${esc(r.rsi??'—')}</td><td>${esc(r.macd??'—')}</td><td>${esc(r.ema??'—')}</td><td>${esc(r.verified||'—')}</td></tr>`).join('')+'</tbody></table>':'';
   }
