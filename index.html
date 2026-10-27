@@ -1023,12 +1023,37 @@ $('rhmExport').onclick=()=>{if(!report)return;let data={version:'2.2 TEST',gener
   function numeric(s){const x=String(s??'').trim().replace(/\s/g,'').replace(',','.');return x===''?null:Number.isFinite(Number(x))?Number(x):null;}
   const dayAge=(date)=>{const d=new Date(String(date).slice(0,10)+'T00:00:00Z');return Number.isFinite(d.getTime())?Math.floor((Date.now()-d.getTime())/86400000):null;};
   const nfmt=(n)=>n===null?'—':Number(n).toFixed(2);
+  // Translate presentation text only; raw Google Sheets values remain unchanged.
+  function ukText(value){
+    let s=String(value??'');
+    const terms=[
+      [/No new L3\s*\/\s*R3 price pivot confirmed/gi,'Новий ціновий екстремум L3/R3 не підтверджено'],
+      [/no new oscillator-confirmed divergence/gi,'Нової дивергенції, підтвердженої осциляторами, немає'],
+      [/No new R3-confirmed pivot/gi,'Новий екстремум R3 не підтверджено'],
+      [/historical pairs not fully re-audited/gi,'Історичні пари ще не перевірено повторно повністю'],
+      [/recalculated from mixed historical source adjusted data/gi,'Перераховано за історичними даними з різних джерел із коригуваннями'],
+      [/prior historical adjustments unverified/gi,'Попередні історичні коригування не перевірено'],
+      [/historical vendor\/corporate actions audit ongoing/gi,'Перевірка історичних даних постачальника та корпоративних подій триває'],
+      [/1D OHLCV source-verified/gi,'Джерело денних даних OHLCV перевірено'],
+      [/source-verified/gi,'джерело перевірено'],
+      [/PARTIAL/gi,'ЧАСТКОВО ПЕРЕВІРЕНО'],
+      [/\bBearish\b/gi,'Спадний'],[/\bBullish\b/gi,'Висхідний'],
+      [/\bSideways\b/gi,'Боковий'],[/\bUp\b/g,'Висхідний'],[/\bDown\b/g,'Спадний'],
+      [/\bClose\b/g,'Ціна закриття'],[/\bSignal\b/g,'сигнальна лінія'],
+      [/\bVerified\b/gi,'Перевірено'],[/\bUnverified\b/gi,'Не перевірено'],
+      [/\bConfirmed\b/gi,'Підтверджено'],[/\bPending\b/gi,'Очікує перевірки'],
+      [/\bassignment\b/gi,'призначення за опціоном'],[/\bearnings\b/gi,'звітність'],
+      [/\bbid\/ask\b/gi,'ціни купівлі/продажу'],[/\bOI\b/g,'відкритий інтерес (OI)']
+    ];
+    for(const [re,to] of terms)s=s.replace(re,to);
+    return s;
+  }
   function verdict(r){
     if(!r)return 'немає даних';
     const bits=[];
     if(r.close!==null&&r.ema!==null)bits.push(r.close>r.ema?'ціна вище EMA20':r.close<r.ema?'ціна нижче EMA20':'ціна на EMA20');
     if(r.rsi!==null)bits.push(r.rsi>=70?'RSI ≥ 70':r.rsi<=30?'RSI ≤ 30':r.rsi>=50?'RSI ≥ 50':'RSI < 50');
-    if(r.macd!==null&&r.signal!==null)bits.push(r.macd>r.signal?'MACD вище Signal':r.macd<r.signal?'MACD нижче Signal':'MACD = Signal');
+    if(r.macd!==null&&r.signal!==null)bits.push(r.macd>r.signal?'MACD вище сигнальної лінії':r.macd<r.signal?'MACD нижче сигнальної лінії':'MACD дорівнює сигнальній лінії');
     return bits.length?bits.join(' · '):'недостатньо числових показників';
   }
   // Presentation-only cleanup: preserve original imported rows and verification statuses.
@@ -1038,8 +1063,9 @@ $('rhmExport').onclick=()=>{if(!report)return;let data={version:'2.2 TEST',gener
       for(const part of String(value||'').split(/\s*\/\s*|\s*;\s*|\s*\n\s*/)){
         const note=part.replace(/\s+/g,' ').trim();
         if(!note)continue;
-        const key=note.toLocaleLowerCase();
-        if(!unique.has(key))unique.set(key,note);
+        const translated=ukText(note);
+        const key=translated.toLocaleLowerCase();
+        if(!unique.has(key))unique.set(key,translated);
       }
     }
     const notes=[...unique.values()];
@@ -1060,7 +1086,7 @@ $('rhmExport').onclick=()=>{if(!report)return;let data={version:'2.2 TEST',gener
       function evaluate(r,label){
         if(!r)return;
         if(r.close!==null&&r.ema!==null){const ok=r.close>r.ema;signals.push({label:label+' · ціна '+(ok?'вище':'не вище')+' EMA20',points:ok?15:0,max:15});score+=ok?15:0;}
-        if(r.macd!==null&&r.signal!==null){const ok=r.macd>r.signal;signals.push({label:label+' · MACD '+(ok?'вище':'не вище')+' Signal',points:ok?15:0,max:15});score+=ok?15:0;}
+        if(r.macd!==null&&r.signal!==null){const ok=r.macd>r.signal;signals.push({label:label+' · MACD '+(ok?'вище':'не вище')+' сигнальної лінії',points:ok?15:0,max:15});score+=ok?15:0;}
         if(r.rsi!==null){const pts=r.rsi>=45&&r.rsi<70?15:r.rsi>=35&&r.rsi<75?7:0;signals.push({label:label+' · RSI '+nfmt(r.rsi),points:pts,max:15});score+=pts;}
       }
       evaluate(d,'1D');evaluate(w,'1W');
@@ -1077,7 +1103,7 @@ $('rhmExport').onclick=()=>{if(!report)return;let data={version:'2.2 TEST',gener
       return {name,category,score,eligible,reasons,details,d,w,uniqueNotes};
     });
     result.sort((a,b)=>Number(b.eligible)-Number(a.eligible)||b.score-a.score||a.name.localeCompare(b.name));
-    const note='Шкала: EMA20 30, MACD 30, RSI 30, узгодженість 10. SMA50/200, обсяги та дивергенції не входять до бала без перевірених числових даних. Перед Covered Call / Wheel перевірити актуальну ціну, 100 акцій, опціонний ланцюг, bid/ask, OI, earnings, капітал і ризик assignment. Не є торговим сигналом.';
+    const note='Шкала: EMA20 30, MACD 30, RSI 30, узгодженість 10. SMA50/200, обсяги та дивергенції не входять до бала без перевірених числових даних. Перед покритим колом (Covered Call) / стратегією Wheel перевірити актуальну ціну, 100 акцій, ланцюг опціонів, ціни купівлі/продажу, відкритий інтерес (OI), звітність, капітал і ризик призначення за опціоном. Не є торговим сигналом.';
     out.innerHTML=result.length?result.map(x=>{
       const status=x.eligible?'Технічне спостереження':'Не оцінювати';
       const reason=x.reasons.length?x.reasons.join(' · '):(x.score>=65?'Позитивні технічні ознаки, потрібні ринкові перевірки':'Сигнали змішані або слабкі');
@@ -1098,7 +1124,7 @@ $('rhmExport').onclick=()=>{if(!report)return;let data={version:'2.2 TEST',gener
       const stale=visible.some(([,r])=>r&&dayAge(r.date)!==null&&dayAge(r.date)>5);
       const unknown=visible.some(([,r])=>r&&(!r.verified||!/^(verified|перевірено|confirmed|підтверджено)$/i.test(r.verified.trim())));
       const conflict=daily&&weekly&&daily.close!==null&&daily.ema!==null&&weekly.close!==null&&weekly.ema!==null&&((daily.close>daily.ema)!==(weekly.close>weekly.ema));
-      return `<article class="market-card"><strong>${esc(t)} · зведення</strong><small>${stale?'⚠ Є записи старші 5 днів · ':''}${unknown?'⚠ Перевірка не підтверджена':''}</small>${visible.map(([label,r])=>r?`<div style="margin-top:12px;border-top:1px solid #36576b;padding-top:10px"><b>${label}</b> · ${esc(r.date)} · Close ${nfmt(r.close)}<br><span class="foot">${esc(verdict(r))}</span><br><span class="foot">RSI ${nfmt(r.rsi)} · MACD ${nfmt(r.macd)} / Signal ${nfmt(r.signal)} · EMA20 ${nfmt(r.ema)}</span><br><span class="foot">Тренд (таблиця): ${esc(r.trend||'—')} · Перевірка: ${esc(r.verified||'—')}</span></div>`:`<div class="foot" style="margin-top:12px">${label}: немає запису</div>`).join('')}<p class="foot">${conflict?'⚠ 1D та 1W по різні боки EMA20. ':''}Дивергенції (з таблиці): ${esc(conciseDivergence(divergence))}</p></article>`;
+      return `<article class="market-card"><strong>${esc(t)} · зведення</strong><small>${stale?'⚠ Є записи старші 5 днів · ':''}${unknown?'⚠ Перевірка не підтверджена':''}</small>${visible.map(([label,r])=>r?`<div style="margin-top:12px;border-top:1px solid #36576b;padding-top:10px"><b>${label}</b> · ${esc(r.date)} · Ціна закриття ${nfmt(r.close)}<br><span class="foot">${esc(verdict(r))}</span><br><span class="foot">RSI ${nfmt(r.rsi)} · MACD ${nfmt(r.macd)} / Signal ${nfmt(r.signal)} · EMA20 ${nfmt(r.ema)}</span><br><span class="foot">Тренд (таблиця): ${esc(ukText(r.trend||'—'))} · Перевірка: ${esc(ukText(r.verified||'—'))}</span></div>`:`<div class="foot" style="margin-top:12px">${label}: немає запису</div>`).join('')}<p class="foot">${conflict?'⚠ 1D та 1W по різні боки EMA20. ':''}Дивергенції (з таблиці): ${esc(conciseDivergence(divergence))}</p></article>`;
     }).join(''):'<p class="muted">Немає даних для панелі.</p>';
   }
   function render(){
@@ -1106,11 +1132,11 @@ $('rhmExport').onclick=()=>{if(!report)return;let data={version:'2.2 TEST',gener
     const latest=new Map();
     for(const r of filtered){const k=r.ticker+'|'+r.tf;if(!latest.has(k)||r.date>latest.get(k).date)latest.set(k,r);}
     const items=[...latest.values()].sort((a,b)=>a.ticker.localeCompare(b.ticker)||a.tf.localeCompare(b.tf));
-    cards.innerHTML=items.length?items.map(r=>`<article class="market-card"><strong>${esc(r.ticker)} · ${esc(r.tf)}</strong><small>Сесія: ${esc(r.date)} · Збір: ${esc(r.collected)}</small><div class="price">${r.close===null?'—':esc(r.close)}</div><div>RSI14: <b>${r.rsi===null?'—':esc(r.rsi)}</b> · EMA20: <b>${r.ema===null?'—':esc(r.ema)}</b></div><div>MACD: ${r.macd===null?'—':esc(r.macd)} · Signal: ${r.signal===null?'—':esc(r.signal)}</div><p class="foot">Тренд: ${esc(r.trend||'—')}<br>Support: ${esc(r.support||'—')} · Resistance: ${esc(r.resistance||'—')}</p><p class="foot">Дивергенції: ${esc(conciseDivergence([r.divergence]))}</p><p class="foot">Перевірка: ${esc(r.verified||'не вказано')}</p></article>`).join(''):'<p class="muted">Немає даних для вибраного фільтра.</p>';
+    cards.innerHTML=items.length?items.map(r=>`<article class="market-card"><strong>${esc(r.ticker)} · ${esc(r.tf)}</strong><small>Сесія: ${esc(r.date)} · Збір: ${esc(r.collected)}</small><div class="price">${r.close===null?'—':esc(r.close)}</div><div>RSI14: <b>${r.rsi===null?'—':esc(r.rsi)}</b> · EMA20: <b>${r.ema===null?'—':esc(r.ema)}</b></div><div>MACD: ${r.macd===null?'—':esc(r.macd)} · Signal: ${r.signal===null?'—':esc(r.signal)}</div><p class="foot">Тренд: ${esc(ukText(r.trend||'—'))}<br>Support: ${esc(r.support||'—')} · Resistance: ${esc(r.resistance||'—')}</p><p class="foot">Дивергенції: ${esc(conciseDivergence([r.divergence]))}</p><p class="foot">Перевірка: ${esc(r.verified||'не вказано')}</p></article>`).join(''):'<p class="muted">Немає даних для вибраного фільтра.</p>';
     renderDashboard();
     renderRanking();
     const sorted=[...filtered].sort((a,b)=>b.date.localeCompare(a.date)||a.ticker.localeCompare(b.ticker)).slice(0,200);
-    history.innerHTML=sorted.length?'<table><thead><tr><th>Дата</th><th>Тикер</th><th>TF</th><th>Close</th><th>RSI</th><th>MACD</th><th>EMA20</th><th>Статус перевірки</th></tr></thead><tbody>'+sorted.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.ticker)}</td><td>${esc(r.tf)}</td><td>${esc(r.close??'—')}</td><td>${esc(r.rsi??'—')}</td><td>${esc(r.macd??'—')}</td><td>${esc(r.ema??'—')}</td><td>${esc(r.verified||'—')}</td></tr>`).join('')+'</tbody></table>':'';
+    history.innerHTML=sorted.length?'<table><thead><tr><th>Дата</th><th>Тикер</th><th>TF</th><th>Close</th><th>RSI</th><th>MACD</th><th>EMA20</th><th>Статус перевірки</th></tr></thead><tbody>'+sorted.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.ticker)}</td><td>${esc(r.tf)}</td><td>${esc(r.close??'—')}</td><td>${esc(r.rsi??'—')}</td><td>${esc(r.macd??'—')}</td><td>${esc(r.ema??'—')}</td><td>${esc(ukText(r.verified||'—'))}</td></tr>`).join('')+'</tbody></table>':'';
   }
   async function loadRows(rows,originLabel){
     const head=rows.shift()||[];
