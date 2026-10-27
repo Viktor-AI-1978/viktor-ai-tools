@@ -74,6 +74,9 @@ table{font-size:15px}td,th{padding:12px}.sectionfoot{margin-top:14px}
     </div>
     <h3 style="margin-top:20px">Панель сигналів · 1D / 1W</h3>
     <p class="muted">Оцінки за останніми доступними записами; не є сигналами в реальному часі. Неперевірені дані позначаються окремо.</p>
+    <h3 style="margin-top:20px">Рейтинг кандидатів · Covered Call / Wheel</h3>
+    <p class="muted">Попередній технічний скринінг, не рекомендація до угоди. Без актуальних перевірених даних, опціонних премій, ліквідності та календаря звітності статус «Пріоритетні» не присвоюється.</p>
+    <div id="indRanking" class="market-grid" aria-live="polite"></div>
     <div id="indDashboard" class="market-grid"></div>
     <div id="indCards" class="market-grid" style="margin-top:16px"></div>
     <h3 style="margin-top:20px">Історія вимірювань</h3>
@@ -1028,6 +1031,34 @@ $('rhmExport').onclick=()=>{if(!report)return;let data={version:'2.2 TEST',gener
     if(r.macd!==null&&r.signal!==null)bits.push(r.macd>r.signal?'MACD вище Signal':r.macd<r.signal?'MACD нижче Signal':'MACD = Signal');
     return bits.length?bits.join(' · '):'недостатньо числових показників';
   }
+  function renderRanking(){
+    const out=document.getElementById('indRanking');if(!out)return;
+    const chosen=records.filter(r=>!ticker.value||r.ticker===ticker.value);
+    const latest=new Map();
+    for(const r of chosen){const k=r.ticker+'|'+r.tf,old=latest.get(k);if(!old||r.date>old.date||(r.date===old.date&&r.collected>old.collected))latest.set(k,r);}
+    const names=[...new Set(chosen.map(r=>r.ticker))].sort();
+    const result=names.map(name=>{
+      const d=latest.get(name+'|1D'),w=latest.get(name+'|1W'),both=[d,w];
+      const missing=both.some(r=>!r||r.close===null||r.ema===null||r.rsi===null||r.macd===null||r.signal===null);
+      const old=both.some(r=>r&& (dayAge(r.date)===null||dayAge(r.date)>5));
+      const unverified=both.some(r=>r&&!/^(verified|перевірено|confirmed|підтверджено)$/i.test((r.verified||'').trim()));
+      const reasons=[];
+      if(missing)reasons.push('бракує повних 1D / 1W показників');
+      if(old)reasons.push('дані старші 5 днів або без коректної дати');
+      if(unverified)reasons.push('перевірка джерела не підтверджена');
+      let category='Не оцінювати';
+      if(!missing&&!old&&!unverified){
+        const above=both.map(r=>r.close>r.ema),momentum=both.map(r=>r.macd>r.signal);
+        if(above[0]!==above[1]||momentum[0]!==momentum[1])reasons.push('1D і 1W мають суперечливі ознаки');
+        else if(above.every(Boolean)&&momentum.every(Boolean)&&both.every(r=>r.rsi>=45&&r.rsi<70))reasons.push('узгоджені позитивні технічні ознаки; потрібна перевірка опціонів і подій');
+        else reasons.push('технічні умови для підвищеного пріоритету не виконані');
+        category='Спостереження'; // No Priority without options liquidity, earnings and current prices.
+      }
+      return {name,category,reasons,d,w};
+    });
+    const order={'Пріоритетні':0,'Спостереження':1,'Не оцінювати':2};result.sort((a,b)=>order[a.category]-order[b.category]||a.name.localeCompare(b.name));
+    out.innerHTML=result.length?result.map(x=>`<article class="market-card"><strong>${esc(x.name)}</strong><small>${esc(x.category)}</small><p class="foot">${esc(x.reasons.join(' · ')||'Необхідна перевірка')}</p><p class="foot">1D: ${esc(x.d?.date||'немає')} · 1W: ${esc(x.w?.date||'немає')}</p><p class="foot">Перед Covered Call / Wheel: перевірити ціну 100 акцій, опціонний ланцюг, bid/ask, обсяг/OI, earnings, ліміти капіталу та ризик assignment.</p></article>`).join(''):'<p class="muted">Немає записів для рейтингу.</p>';
+  }
   function renderDashboard(){
     const chosen=records.filter(r=>!ticker.value||r.ticker===ticker.value);
     const latest=new Map();
@@ -1051,6 +1082,7 @@ $('rhmExport').onclick=()=>{if(!report)return;let data={version:'2.2 TEST',gener
     const items=[...latest.values()].sort((a,b)=>a.ticker.localeCompare(b.ticker)||a.tf.localeCompare(b.tf));
     cards.innerHTML=items.length?items.map(r=>`<article class="market-card"><strong>${esc(r.ticker)} · ${esc(r.tf)}</strong><small>Сесія: ${esc(r.date)} · Збір: ${esc(r.collected)}</small><div class="price">${r.close===null?'—':esc(r.close)}</div><div>RSI14: <b>${r.rsi===null?'—':esc(r.rsi)}</b> · EMA20: <b>${r.ema===null?'—':esc(r.ema)}</b></div><div>MACD: ${r.macd===null?'—':esc(r.macd)} · Signal: ${r.signal===null?'—':esc(r.signal)}</div><p class="foot">Тренд: ${esc(r.trend||'—')}<br>Support: ${esc(r.support||'—')} · Resistance: ${esc(r.resistance||'—')}</p><p class="foot">Дивергенції: ${esc(r.divergence||'—')}</p><p class="foot">Перевірка: ${esc(r.verified||'не вказано')}</p></article>`).join(''):'<p class="muted">Немає даних для вибраного фільтра.</p>';
     renderDashboard();
+    renderRanking();
     const sorted=[...filtered].sort((a,b)=>b.date.localeCompare(a.date)||a.ticker.localeCompare(b.ticker)).slice(0,200);
     history.innerHTML=sorted.length?'<table><thead><tr><th>Дата</th><th>Тикер</th><th>TF</th><th>Close</th><th>RSI</th><th>MACD</th><th>EMA20</th><th>Статус перевірки</th></tr></thead><tbody>'+sorted.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.ticker)}</td><td>${esc(r.tf)}</td><td>${esc(r.close??'—')}</td><td>${esc(r.rsi??'—')}</td><td>${esc(r.macd??'—')}</td><td>${esc(r.ema??'—')}</td><td>${esc(r.verified||'—')}</td></tr>`).join('')+'</tbody></table>':'';
   }
