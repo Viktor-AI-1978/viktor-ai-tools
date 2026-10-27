@@ -1052,18 +1052,24 @@ $('rhmExport').onclick=()=>{if(!report)return;let data={version:'2.2 TEST',gener
       evaluate(d,'1D');evaluate(w,'1W');
       if(d&&w&&d.close!==null&&d.ema!==null&&w.close!==null&&w.ema!==null){const agree=(d.close>d.ema)===(w.close>w.ema);signals.push({label:'Узгодженість напрямку 1D / 1W',points:agree?10:0,max:10});score+=agree?10:0;}
       const reasons=[];
-      if(missing)reasons.push('відсутні обов’язкові 1D / 1W показники');
-      if(old)reasons.push('дані старші 5 днів, майбутня або некоректна дата');
-      if(unverified)reasons.push('джерело не має підтвердженого статусу');
+      if(missing)reasons.push('Бракує показників 1D або 1W');
+      if(old)reasons.push('Дані застарілі або дата некоректна');
+      if(unverified)reasons.push('Перевірка джерела не завершена (наприклад, PARTIAL)');
       const eligible=!missing&&!old&&!unverified;
       const category=eligible?'Технічне спостереження':'Не оцінювати';
       const divergence=both.filter(Boolean).map(r=>r.divergence).filter(Boolean);
-      if(divergence.length)reasons.push('дивергенції з таблиці: '+divergence.join(' / '));
+      const uniqueNotes=[...new Set(divergence.flatMap(v=>String(v).split(/\s*\/\s*|\s*;\s*|\s*\n\s*/)).map(v=>v.trim()).filter(Boolean))];
       const details=signals.map(x=>`${x.label}: ${x.points}/${x.max}`).join(' · ');
-      return {name,category,score,eligible,reasons,details,d,w};
+      return {name,category,score,eligible,reasons,details,d,w,uniqueNotes};
     });
     result.sort((a,b)=>Number(b.eligible)-Number(a.eligible)||b.score-a.score||a.name.localeCompare(b.name));
-    out.innerHTML=result.length?result.map(x=>`<article class="market-card"><strong>${esc(x.name)}</strong><small>${esc(x.category)} · ${x.eligible?'Технічний бал':'Попередній бал, недійсний для рейтингу'}: ${x.score}/100</small><p class="foot">${esc(x.reasons.join(' · ')||(x.score>=65?'Позитивні технічні ознаки; необхідні ринкові перевірки':'Сигнали змішані або слабкі'))}</p><p class="foot">${esc(x.details||'Недостатньо числових показників')}</p><p class="foot">1D: ${esc(x.d?.date||'немає')} · 1W: ${esc(x.w?.date||'немає')}</p><p class="foot">Шкала: EMA20 30, MACD 30, RSI 30, узгодженість 10. SMA50/200, обсяги та дивергенції поки не входять до балу: потрібні перевірені числові дані. Перед Covered Call / Wheel окремо перевірити актуальну ціну, 100 акцій, bid/ask, OI, earnings, капітал та assignment. Бал не є торговим сигналом.</p></article>`).join(''):'<p class="muted">Немає записів для рейтингу.</p>';
+    const note='Шкала: EMA20 30, MACD 30, RSI 30, узгодженість 10. SMA50/200, обсяги та дивергенції не входять до бала без перевірених числових даних. Перед Covered Call / Wheel перевірити актуальну ціну, 100 акцій, опціонний ланцюг, bid/ask, OI, earnings, капітал і ризик assignment. Не є торговим сигналом.';
+    out.innerHTML=result.length?result.map(x=>{
+      const status=x.eligible?'Технічне спостереження':'Не оцінювати';
+      const reason=x.reasons.length?x.reasons.join(' · '):(x.score>=65?'Позитивні технічні ознаки, потрібні ринкові перевірки':'Сигнали змішані або слабкі');
+      const divergenceText=x.uniqueNotes.length?x.uniqueNotes.slice(0,4).join(' / ')+(x.uniqueNotes.length>4?' / …':''):'Не зазначені';
+      return `<article class="market-card" style="min-width:0"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap"><div><strong>${esc(x.name)}</strong><small>${esc(status)}</small></div><div style="text-align:right"><b style="font-size:23px">${x.eligible?x.score:'—'}<span style="font-size:14px;color:#abc8d9">${x.eligible?'/100':''}</span></b><small>${x.eligible?'Технічний бал':'Без підтвердженого рейтингу'}</small></div></div><div style="height:7px;background:#27465b;border-radius:8px;overflow:hidden;margin:12px 0"><div style="height:100%;width:${x.eligible?x.score:0}%;background:#50dac8"></div></div><p class="foot" style="margin:8px 0">${esc(reason)}</p><small>1D: ${esc(x.d?.date||'немає')} · 1W: ${esc(x.w?.date||'немає')}</small><details style="margin-top:12px;border-top:1px solid #36576b;padding-top:10px"><summary style="cursor:pointer;font-weight:700;padding:5px 0">Детальний аналіз</summary><p class="foot">${x.eligible?'':`Попередній розрахунок: ${x.score}/100 — не для рейтингу.<br>`}<b>Розподіл балів:</b> ${esc(x.details||'Недостатньо числових показників')}</p><p class="foot"><b>Дивергенції та примітки з таблиці (до 4 унікальних):</b> ${esc(divergenceText)}</p><p class="foot">${esc(note)}</p></details></article>`;
+    }).join(''):'<p class="muted">Немає записів для рейтингу.</p>';
   }
   function renderDashboard(){
     const chosen=records.filter(r=>!ticker.value||r.ticker===ticker.value);
